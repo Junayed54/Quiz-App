@@ -6,8 +6,42 @@ import pandas as pd
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import Category, Item, Question, Option
+from .serializers import CategorySerializer, ItemSerializer
+
+class CategoryCreateAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Deserialize the data
+        serializer = CategorySerializer(data=request.data)
+        
+        # Check if the data is valid
+        if serializer.is_valid():
+            category = serializer.save()  # Save the category
+            return Response(CategorySerializer(category).data, status=status.HTTP_201_CREATED)
+        
+        # If invalid, return errors
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ItemCreateAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Deserialize the data for Item creation
+        serializer = ItemSerializer(data=request.data)
+        
+        # Check if the data is valid
+        if serializer.is_valid():
+            item = serializer.save()  # Save the item
+            return Response(ItemSerializer(item).data, status=status.HTTP_201_CREATED)
+        
+        # If invalid, return errors
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
 class GetQuestionsView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
