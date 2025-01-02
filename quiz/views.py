@@ -46,16 +46,14 @@ class GetQuestionsView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, *args, **kwargs):
-        
+    def post(self, request, *args, **kwargs):
         category_id = request.data.get('category_id')
         item_id = request.data.get('item_id')
+        current_question_index = request.data.get('current_question_index', 0)  # Default to the first question
         
         try:
             category = Category.objects.get(id=category_id)
-            
             item = Item.objects.get(id=item_id, category=category)
-            
         except Category.DoesNotExist:
             return Response(
                 {"response_type": "error", "is_logged_in": True, "message": "Category not found."},
@@ -67,39 +65,47 @@ class GetQuestionsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Get questions and options
+        # Get questions
         questions = Question.objects.filter(item=item)
-        question_set = []
-        for question in questions:
-            options = Option.objects.filter(question=question)
-            answer_set = [
-                {
-                    "answer_id": str(option.id),
-                    "answer": option.option_text,
-                    "is_ture": option.is_correct
-                }
-                for option in options
-            ]
-            question_set.append({
-                "question_id": str(question.id),
-                "question": question.question_text,
-                "answer_set": answer_set
-            })
+        
+        if current_question_index < 0 or current_question_index >= len(questions):
+            return Response(
+                {"response_type": "error", "is_logged_in": True, "message": "Invalid question index."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Response
+        question = questions[current_question_index]
+        options = Option.objects.filter(question=question)
+        answer_set = [
+            {
+                "answer_id": str(option.id),
+                "answer": option.option_text,
+                "is_ture": option.is_correct
+            }
+            for option in options
+        ]
+
+        # Response for the current question
         return Response(
             {
                 "response_type": "success",
                 "is_logged_in": True,
-                "question_set": question_set
+                "question": {
+                    "question_id": str(question.id),
+                    "question": question.question_text,
+                    "answer_set": answer_set
+                },
+                "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
+                "is_last_question": current_question_index + 1 >= len(questions)
             },
             status=status.HTTP_200_OK
         )
 
 
+
 class DashboardView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    # authentication_classes = [JWTAuthentication]
+    # permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         # user_auth_token = request.GET.get('user_auth_token')
