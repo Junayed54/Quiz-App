@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, Item, Question, Option
+from .models import *
 
 
 @admin.register(Category)
@@ -41,3 +41,15 @@ class OptionAdmin(admin.ModelAdmin):
     list_filter = ('is_correct',)
     autocomplete_fields = ('question',)
     ordering = ('question', 'option_text')
+
+
+@admin.register(QuizAttempt)
+class QuizAttemptAdmin(admin.ModelAdmin):
+    list_display = ('user', 'item', 'total_questions', 'correct_answers', 'wrong_answers', 'score', 'attempt_date')
+    list_filter = ('attempt_date', 'item', 'user')
+    search_fields = ('user__username', 'item__title')
+    readonly_fields = ('attempt_date', 'score')
+    
+    def has_add_permission(self, request):
+        """Prevent manual addition of quiz attempts."""
+        return False

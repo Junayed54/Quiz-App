@@ -1,6 +1,10 @@
 from rest_framework import serializers
-from .models import Category, Item, Question, Option
-
+from .models import *
+class QuizSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Quiz
+        fields = ['id', 'title', 'description', 'total_questions', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'total_questions', 'created_at', 'updated_at']
 
 class OptionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,17 +52,9 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'title', 'category_type', 'items']
+        fields = ['id', 'title', 'category_type', 'items', 'quiz']
 
     def create(self, validated_data):
-        # items_data = validated_data.pop('items')
+        
         category = Category.objects.create(**validated_data)
-        # for item_data in items_data:
-        #     questions_data = item_data.pop('questions')
-        #     item = Item.objects.create(category=category, **item_data)
-        #     for question_data in questions_data:
-        #         options_data = question_data.pop('options')
-        #         question = Question.objects.create(item=item, **question_data)
-        #         for option_data in options_data:
-        #             Option.objects.create(question=question, **option_data)
         return category

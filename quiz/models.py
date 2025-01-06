@@ -1,5 +1,27 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+User = get_user_model()
+class Quiz(models.Model):
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    total_questions = models.PositiveIntegerField(default=0)
+    negative_marking = models.FloatField(
+        default=0, 
+        help_text="Specify the negative marking value for incorrect answers. Default is 0 (no negative marking)."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return self.title
+
+    def calculate_total_questions(self):
+        """Calculate the total number of questions in the quiz and return the value."""
+        total_questions = 0
+        for category in self.categories.all():  # Access categories related to the quiz
+            for item in category.items.all():  # Access items related to the category
+                total_questions += item.questions.count()  # Count questions in each item
+        return total_questions or 0
 
 class Category(models.Model):
     title = models.CharField(max_length=200)
@@ -9,7 +31,12 @@ class Category(models.Model):
         ('practice', 'Practice'),
         ('reading', 'Reading'),
     ])
-    
+    quiz = models.ForeignKey(Quiz, related_name='categories', on_delete=models.CASCADE)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.quiz:
+            self.quiz.calculate_total_questions()
     def __str__(self):
         return self.title
 
@@ -44,3 +71,54 @@ class Option(models.Model):
 
     def __str__(self):
         return self.option_text
+
+
+
+class QuizAttempt(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)  # Connect with Item
+    total_questions = models.PositiveIntegerField()
+    correct_answers = models.PositiveIntegerField(default=0)
+    wrong_answers = models.PositiveIntegerField(default=0)
+    score = models.FloatField(default=0)
+    attempt_date = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.item.title}"
+
+    def calculate_score(self):
+        """ Calculate total score based on correct answers. """
+        self.score = self.correct_answers
+        self.save()
+
+
+
+
+class Leaderboard(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    item = models.ForeignKey(Item, on_delete=models.CASCADE)  # Or Quiz if you want leaderboard at quiz level
+    score = models.PositiveIntegerField()
+    rank = models.PositiveIntegerField(null=True, blank=True)  # Rank will be set when generating leaderboard
+    attempt_date = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.score} in {self.item.title}"
+
+    class Meta:
+        # Optional: You can order the leaderboard by score and attempt date (descending order)
+        ordering = ['-score', 'attempt_date']
+
+    def save(self, *args, **kwargs):
+        # Update rank based on the score before saving
+        self.rank = self.calculate_rank()
+        super().save(*args, **kwargs)
+
+    def calculate_rank(self):
+        """Calculate the rank based on score and attempt_date."""
+        all_scores = Leaderboard.objects.filter(item=self.item).order_by('-score', 'attempt_date')
+        rank = 1
+        for idx, entry in enumerate(all_scores):
+            if entry.user == self.user:
+                rank = idx + 1
+                break
+        return rank
