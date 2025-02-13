@@ -2,6 +2,19 @@ from django.contrib import admin
 from .models import *
 
 
+@admin.register(Quiz)
+class QuizAdmin(admin.ModelAdmin):
+    list_display = ('title', 'total_questions', 'negative_marking', 'created_at', 'updated_at')
+    search_fields = ('title',)
+    list_filter = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'total_questions')
+    
+    def save_model(self, request, obj, form, change):
+        """Automatically update the total_questions field before saving."""
+        obj.total_questions = obj.calculate_total_questions()
+        super().save_model(request, obj, form, change)
+        
+        
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ('id', 'title', 'category_type')
