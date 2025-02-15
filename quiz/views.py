@@ -21,9 +21,30 @@ class QuizCreateAPIView(APIView):
         if serializer.is_valid():
             quiz = serializer.save()
             quiz.calculate_total_questions()  # Calculate total questions after saving
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+            return Response(
+                {
+                    "type": "success",
+                    "message": "Quiz created successfully",
+                    "data": {
+                        "data": serializer.data,
+                    }
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(
+            {
+                "type": "error",
+                "message": "Invalid data provided",
+                "data": {
+                    "data": serializer.errors,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+        
+        
+        
 class CategoryCreateAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -35,10 +56,22 @@ class CategoryCreateAPIView(APIView):
         # Check if the data is valid
         if serializer.is_valid():
             category = serializer.save()  # Save the category
-            return Response(CategorySerializer(category).data, status=status.HTTP_201_CREATED)
+            return Response({
+                "type": "success",
+                "message": "Category created successfully",
+                "data": {
+                    "data": serializer.data,
+                }
+            }, status=status.HTTP_201_CREATED)
         
-        # If invalid, return errors
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # If invalid, return errors with the same response format
+        return Response({
+            "type": "error",
+            "message": "Category creation failed.",
+            "data": {
+                "data": serializer.errors,
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ItemCreateAPIView(APIView):
@@ -52,11 +85,29 @@ class ItemCreateAPIView(APIView):
         # Check if the data is valid
         if serializer.is_valid():
             item = serializer.save()  # Save the item
-            return Response(ItemSerializer(item).data, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "type": "success",
+                    "message": "Item created successfully",
+                    "data": {
+                        "data": serializer.data,
+                    }
+                },
+                status=status.HTTP_201_CREATED
+            )
         
-        # If invalid, return errors
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+        # If invalid, return errors with the same structure
+        return Response(
+            {
+                "type": "error",
+                "message": "Invalid data provided",
+                "data": {
+                    "data": serializer.errors,
+                }
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     
 class GetQuestionsView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -72,12 +123,24 @@ class GetQuestionsView(APIView):
             item = Item.objects.get(id=item_id, category=category)
         except Category.DoesNotExist:
             return Response(
-                {"response_type": "error", "is_logged_in": True, "message": "Category not found."},
+                {
+                    "type": "error",
+                    "message": "Category not found.",
+                    "data": {
+                        "data": "Category not found."
+                    }
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
         except Item.DoesNotExist:
             return Response(
-                {"response_type": "error", "is_logged_in": True, "message": "Item not found in the specified category."},
+                {
+                    "type": "error",
+                    "message": "Item not found in the specified category.",
+                    "data": {
+                        "data": "Item not found."
+                    }
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -86,7 +149,13 @@ class GetQuestionsView(APIView):
         
         if current_question_index < 0 or current_question_index >= len(questions):
             return Response(
-                {"response_type": "error", "is_logged_in": True, "message": "Invalid question index."},
+                {
+                    "type": "error",
+                    "message": "Invalid question index.",
+                    "data": {
+                        "data": "Invalid question index."
+                    }
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -104,12 +173,14 @@ class GetQuestionsView(APIView):
         # Response for the current question
         return Response(
             {
-                "response_type": "success",
-                "is_logged_in": True,
-                "question": {
-                    "question_id": str(question.id),
-                    "question": question.question_text,
-                    "answer_set": answer_set
+                "type": "success",
+                "message": "Question fetched successfully",
+                "data": {
+                    "data": {
+                        "question_id": str(question.id),
+                        "question": question.question_text,
+                        "answer_set": answer_set
+                    }
                 },
                 "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
                 "is_last_question": current_question_index + 1 >= len(questions)
@@ -231,12 +302,17 @@ class DashboardView(APIView):
         # Construct response
         return Response(
             {
-                "response_type": "success",
+                "type": "success",
+                "message": "Dashboard fetched successfully",
+                "data": {
+                    "data": quiz_data,
+                },
                 "is_logged_in": True if request.user.is_authenticated else False,
-                "quiz_data": quiz_data,
             },
             status=status.HTTP_200_OK
         )
+
+
         
 class QuestionUploadView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -246,7 +322,14 @@ class QuestionUploadView(APIView):
         # Ensure a file is provided
         file = request.FILES.get('file')
         if not file:
-            return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "type": "error",
+                    "message": "No file uploaded.",
+                    "data": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             # Parse the uploaded Excel file
@@ -260,7 +343,11 @@ class QuestionUploadView(APIView):
 
             if not all(col in df.columns for col in required_columns):
                 return Response(
-                    {'error': 'Excel file is missing required columns.'},
+                    {
+                        "type": "error",
+                        "message": "Excel file is missing required columns.",
+                        "data": {},
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -272,7 +359,7 @@ class QuestionUploadView(APIView):
                     question_text = row['Question']
                     options_num = int(row['Options_num'])
                     answers = row['Answer'].split(',')  # Expected format: "Option1,Option3"
-                    answers = [answer.strip().capitalize() for answer in answers]  # Make sure answers are properly formatted
+                    answers = [answer.strip().capitalize() for answer in answers]  # Ensure answers are properly formatted
 
                     # Fetch or create category and subject
                     category, created = Category.objects.get_or_create(id=category_id)
@@ -296,11 +383,25 @@ class QuestionUploadView(APIView):
                                 defaults={'is_correct': is_correct}
                             )
 
-            return Response({'message': 'Questions uploaded successfully!'}, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "type": "success",
+                    "message": "Questions uploaded successfully!",
+                    "data": {},
+                },
+                status=status.HTTP_201_CREATED
+            )
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {
+                    "type": "error",
+                    "message": str(e),
+                    "data": {},
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         
         
 class SubmitAnswerView(APIView):
@@ -322,7 +423,11 @@ class SubmitAnswerView(APIView):
             quiz = category.quiz  # Access the related Quiz
         except (Question.DoesNotExist, Option.DoesNotExist, Item.DoesNotExist, Category.DoesNotExist, Quiz.DoesNotExist):
             return Response(
-                {"response_type": "error", "message": "Invalid question, option, or item."},
+                {
+                    "type": "error",
+                    "message": "Invalid question, option, or item.",
+                    "data": {},
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -362,7 +467,7 @@ class SubmitAnswerView(APIView):
             quiz_attempt.score -= negative_marking  # Decrease score for wrong answer
 
         quiz_attempt.save()
-        print(next_question_index)
+
         # Fetch next question
         questions = Question.objects.filter(item=item).order_by('id')
         if next_question_index < len(questions):
@@ -375,27 +480,34 @@ class SubmitAnswerView(APIView):
 
             return Response(
                 {
-                    "response_type": "success",
+                    "type": "success",
                     "message": "Answer submitted successfully.",
-                    "is_correct": selected_option.is_correct,
-                    "next_question": {
-                        "question_id": str(next_question.id),
-                        "question": next_question.question_text,
-                        "answer_set": answer_set,
-                    },
-                    "is_last_question": next_question_index + 1 >= len(questions),
+                    "data":{
+                        "data": {
+                            "is_correct": selected_option.is_correct,
+                            "next_question": {
+                                "question_id": str(next_question.id),
+                                "question": next_question.question_text,
+                                "answer_set": answer_set,
+                            },
+                            "is_last_question": next_question_index + 1 >= len(questions),
+                        },
+                    } 
                 },
                 status=status.HTTP_200_OK
             )
         else:
             return Response(
                 {
-                    "response_type": "success",
+                    "type": "success",
                     "message": "Quiz completed successfully.",
-                    "is_correct": selected_option.is_correct,
-                    "score": quiz_attempt.score,
-                    "correct_answers": quiz_attempt.correct_answers,
-                    "wrong_answers": quiz_attempt.wrong_answers,
+                    "data": {
+                        "is_correct": selected_option.is_correct,
+                        "score": quiz_attempt.score,
+                        "correct_answers": quiz_attempt.correct_answers,
+                        "wrong_answers": quiz_attempt.wrong_answers,
+                    },
                 },
                 status=status.HTTP_200_OK
             )
+

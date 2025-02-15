@@ -18,12 +18,24 @@ class UserRegistrationView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "type": "error",
+                    "message": "user with this email already exists.",
+                    "data": {}
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
         user = serializer.save()
         return Response(
             {
-                "user": UserSerializer(user).data,
-                "message": "User registered successfully"
+                "type": "success",
+                "message": "User registered successfully",
+                "data": {
+                    "data": UserSerializer(user).data
+                }
             },
             status=status.HTTP_201_CREATED,
         )
@@ -36,22 +48,32 @@ class UserLoginView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        # Get data from request
         serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "type": "error",
+                    "message": "Invalid credentials",
+                    "data": {}
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
-        # Validate the serializer
-        serializer.is_valid(raise_exception=True)
-
-        # Return tokens
         return Response(
             {
-                "access_token": serializer.validated_data['access_token'],
-                "refresh_token": serializer.validated_data['refresh_token'],
+                "type": "success",
                 "message": "Login successful",
+                "data":{
+                    "data":{
+                        "access_token": serializer.validated_data['access_token'],
+                        "refresh_token": serializer.validated_data['refresh_token']
+                    }
+                } 
             },
             status=status.HTTP_200_OK,
         )
-
+        
+        
 class UserViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing users.
@@ -67,3 +89,17 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.request.user.is_staff:
             return super().get_queryset()
         return User.objects.filter(id=self.request.user.id)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(
+            {
+                "type": "success",
+                "message": "Users retrieved successfully",
+                "data": {
+                    "data":serializer.data
+                } 
+            },
+            status=status.HTTP_200_OK,
+        )
