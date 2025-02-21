@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import User
+from .models import *
 
 class UserAdmin(BaseUserAdmin):
     # Fields to display in the admin interface
@@ -30,3 +30,25 @@ class UserAdmin(BaseUserAdmin):
 
 # Register the User model with the custom admin
 admin.site.register(User, UserAdmin)
+
+
+@admin.register(UserOpenAccount)
+class UserOpenAccountAdmin(admin.ModelAdmin):
+    list_display = ("id", "ip_address", "device", "browser", "os", "first_seen_at", "last_seen_at", "status")
+    list_filter = ("status", "os", "browser", "device", "first_seen_at")
+    search_fields = ("id", "ip_address", "user_agent", "device", "browser", "os")
+    readonly_fields = ("id", "first_seen_at", "last_seen_at")
+
+    fieldsets = (
+        ("User Info", {"fields": ("id", "ip_address", "user_agent")}),
+        ("Device Details", {"fields": ("device", "browser", "os")}),
+        ("Activity", {"fields": ("first_seen_at", "last_seen_at")}),
+        ("Status", {"fields": ("status",)}),
+    )
+    
+@admin.register(UserActivityLog)
+class UserActivityLogAdmin(admin.ModelAdmin):
+    list_display = ("user", "url", "timestamp")  # Columns to show in the list view
+    search_fields = ("user__id", "url")  # Searchable fields
+    list_filter = ("timestamp",)  # Filters for date/time
+    ordering = ("-timestamp",)

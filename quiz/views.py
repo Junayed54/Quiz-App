@@ -4,7 +4,10 @@ from rest_framework import status
 from django.db import transaction
 import pandas as pd
 from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.tokens import AccessToken
 from .models import *
 from .serializers import *
 
@@ -224,34 +227,44 @@ class GetQuestionsView(APIView):
 #             }, status=status.HTTP_200_OK)
 
 class DashboardView(APIView):
-    # authentication_classes = [JWTAuthentication]
-    # permission_classes = [IsAuthenticated]
-
     def get(self, request, *args, **kwargs):
-        # Fetch quizzes first
+        # Attempt JWT authentication
+        user = None
+        is_logged_in = False
+        response_type = "success"
+        message = "Dashboard fetched successfully"
+
+        try:
+            jwt_auth = JWTAuthentication()
+            auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
+
+            if auth_result is not None:
+                user, auth = auth_result
+                is_logged_in = True
+        except InvalidToken:
+            response_type = "error"
+            message = "Token not valid"
+
+        # Fetch quizzes
         quizzes = Quiz.objects.all()
         quiz_data = []
 
         for quiz in quizzes:
-            # Calculate total questions and update the quiz
             total_questions = quiz.calculate_total_questions()
-            quiz.total_questions = total_questions  # Set the total_questions field
-            quiz.save()  # Save the quiz with updated total_questions
+            quiz.total_questions = total_questions
+            quiz.save()
 
-            # Get categories for this quiz
             categories = Category.objects.filter(quiz=quiz)
             task_category = []
 
             for category in categories:
-                # Get items within this category
                 items = Item.objects.filter(category=category)
                 task_items = []
 
                 for item in items:
-                    # Get quiz attempt data for the authenticated user (if any)
                     quiz_attempt_data = None
-                    if request.user.is_authenticated:  # Assuming user is authenticated
-                        quiz_attempt = QuizAttempt.objects.filter(user=request.user, item=item).first()
+                    if user:  # Include user-specific quiz attempt data only if authenticated
+                        quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
                         if quiz_attempt:
                             quiz_attempt_data = {
                                 "total_questions": quiz_attempt.total_questions,
@@ -260,7 +273,6 @@ class DashboardView(APIView):
                                 "score": quiz_attempt.score,
                             }
 
-                    # Get leaderboard data for this item (Top 10 scorers)
                     leaderboard_data = Leaderboard.objects.filter(item=item).order_by('-score')[:10]
                     leaderboard = [
                         {
@@ -278,8 +290,8 @@ class DashboardView(APIView):
                         "item_button_label": item.button_label or "Play",
                         "access_mode": item.access_mode or "public",
                         "item_type": item.item_type or "default",
-                        "quiz_attempt": quiz_attempt_data,  # Include quiz attempt data if available
-                        "leaderboard": leaderboard,  # Include leaderboard data
+                        "quiz_attempt": quiz_attempt_data,  # Only if user is authenticated
+                        "leaderboard": leaderboard,  # Always included
                     })
 
                 task_category.append({
@@ -293,7 +305,7 @@ class DashboardView(APIView):
                 "quiz_id": str(quiz.id),
                 "quiz_title": quiz.title,
                 "quiz_description": quiz.description,
-                "total_questions": quiz.total_questions,  # Display the total number of questions
+                "total_questions": quiz.total_questions,
                 "created_at": quiz.created_at,
                 "updated_at": quiz.updated_at,
                 "categories": task_category,
@@ -302,17 +314,18 @@ class DashboardView(APIView):
         # Construct response
         return Response(
             {
-                "type": "success",
-                "message": "Dashboard fetched successfully",
+                "type": response_type,  # "success" or "error"
+                "message": message,  # "Token not valid" if failed
                 "data": {
                     "data": quiz_data,
                 },
-                "is_logged_in": True if request.user.is_authenticated else False,
+                "is_logged_in": is_logged_in,
             },
             status=status.HTTP_200_OK
         )
-
-
+        
+        
+        
         
 class QuestionUploadView(APIView):
     authentication_classes = [JWTAuthentication]

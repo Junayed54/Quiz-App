@@ -103,3 +103,13 @@ class UserViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK,
         )
+        
+
+
+from rest_framework.permissions import IsAdminUser
+from .models import UserOpenAccount
+from .serializers import UserOpenAccountSerializer
+class UserOpenAccountViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = UserOpenAccount.objects.all().order_by("-last_seen_at")
+    serializer_class = UserOpenAccountSerializer
+    permission_classes = [IsAdminUser] 
