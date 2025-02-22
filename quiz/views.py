@@ -317,9 +317,10 @@ class DashboardView(APIView):
                 "type": response_type,  # "success" or "error"
                 "message": message,  # "Token not valid" if failed
                 "data": {
+                    "is_logged_in": is_logged_in,
                     "data": quiz_data,
                 },
-                "is_logged_in": is_logged_in,
+                
             },
             status=status.HTTP_200_OK
         )
