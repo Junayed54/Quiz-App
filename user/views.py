@@ -40,6 +40,8 @@ class UserRegistrationView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED,
         )
 
+
+
 class UserLoginView(generics.GenericAPIView):
     """
     API view for user login.

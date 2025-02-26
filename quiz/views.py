@@ -228,12 +228,14 @@ class GetQuestionsView(APIView):
 
 class DashboardView(APIView):
     def get(self, request, *args, **kwargs):
-        # Attempt JWT authentication
+        # Initialize response data
         user = None
         is_logged_in = False
         response_type = "success"
         message = "Dashboard fetched successfully"
+        status_code = status.HTTP_200_OK
 
+        # Attempt JWT authentication
         try:
             jwt_auth = JWTAuthentication()
             auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
@@ -241,9 +243,10 @@ class DashboardView(APIView):
             if auth_result is not None:
                 user, auth = auth_result
                 is_logged_in = True
-        except InvalidToken:
+        except (InvalidToken, AuthenticationFailed):
             response_type = "error"
-            message = "Token not valid"
+            message = "Invalid or expired token"
+            status_code = status.HTTP_401_UNAUTHORIZED  # Unauthorized response
 
         # Fetch quizzes
         quizzes = Quiz.objects.all()
@@ -315,14 +318,13 @@ class DashboardView(APIView):
         return Response(
             {
                 "type": response_type,  # "success" or "error"
-                "message": message,  # "Token not valid" if failed
+                "message": message,
                 "data": {
                     "is_logged_in": is_logged_in,
-                    "data": quiz_data,
+                    "data": quiz_data,  # Renamed to "quizzes" for clarity
                 },
-                
             },
-            status=status.HTTP_200_OK
+            status=status_code
         )
         
         
