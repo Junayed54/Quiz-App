@@ -32,7 +32,7 @@ class QuizCreateAPIView(APIView):
                         "data": serializer.data,
                     }
                 },
-                status=status.HTTP_201_CREATED,
+                status=status.HTTP_200_OK,
             )
         return Response(
             {
@@ -42,7 +42,7 @@ class QuizCreateAPIView(APIView):
                     "data": serializer.errors,
                 }
             },
-            status=status.HTTP_400_BAD_REQUEST,
+            status=status.HTTP_200_OK,
         )
 
         
@@ -65,7 +65,7 @@ class CategoryCreateAPIView(APIView):
                 "data": {
                     "data": serializer.data,
                 }
-            }, status=status.HTTP_201_CREATED)
+            }, status.HTTP_200_OK)
         
         # If invalid, return errors with the same response format
         return Response({
@@ -74,7 +74,7 @@ class CategoryCreateAPIView(APIView):
             "data": {
                 "data": serializer.errors,
             }
-        }, status=status.HTTP_400_BAD_REQUEST)
+        }, status=status.HTTP_200_OK)
 
 
 class ItemCreateAPIView(APIView):
@@ -96,7 +96,7 @@ class ItemCreateAPIView(APIView):
                         "data": serializer.data,
                     }
                 },
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_200_OK
             )
         
         # If invalid, return errors with the same structure
@@ -108,7 +108,7 @@ class ItemCreateAPIView(APIView):
                     "data": serializer.errors,
                 }
             },
-            status=status.HTTP_400_BAD_REQUEST
+            status=status.HTTP_200_OK
         )
 
     
@@ -133,7 +133,7 @@ class GetQuestionsView(APIView):
                         "data": "Category not found."
                     }
                 },
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_200_OK
             )
         except Item.DoesNotExist:
             return Response(
@@ -144,7 +144,7 @@ class GetQuestionsView(APIView):
                         "data": "Item not found."
                     }
                 },
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_200_OK
             )
 
         # Get questions
@@ -159,7 +159,7 @@ class GetQuestionsView(APIView):
                         "data": "Invalid question index."
                     }
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
 
         question = questions[current_question_index]
@@ -246,7 +246,7 @@ class DashboardView(APIView):
         except (InvalidToken, AuthenticationFailed):
             response_type = "error"
             message = "Invalid or expired token"
-            status_code = status.HTTP_401_UNAUTHORIZED  # Unauthorized response
+            status_code = status.HTTP_200_OK  # Unauthorized response
 
         # Fetch quizzes
         quizzes = Quiz.objects.all()
@@ -324,7 +324,7 @@ class DashboardView(APIView):
                     "data": quiz_data,  # Renamed to "quizzes" for clarity
                 },
             },
-            status=status_code
+            status=status.HTTP_200_OK
         )
         
         
@@ -344,7 +344,7 @@ class QuestionUploadView(APIView):
                     "message": "No file uploaded.",
                     "data": {},
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
 
         try:
@@ -364,7 +364,7 @@ class QuestionUploadView(APIView):
                         "message": "Excel file is missing required columns.",
                         "data": {},
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_200_OK
                 )
 
             with transaction.atomic():  # Ensure atomicity
@@ -405,7 +405,7 @@ class QuestionUploadView(APIView):
                     "message": "Questions uploaded successfully!",
                     "data": {},
                 },
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_200_OK
             )
 
         except Exception as e:
@@ -415,7 +415,7 @@ class QuestionUploadView(APIView):
                     "message": str(e),
                     "data": {},
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
 
         
@@ -444,7 +444,7 @@ class SubmitAnswerView(APIView):
                     "message": "Invalid question, option, or item.",
                     "data": {},
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
 
         # Negative marking value from the Quiz model

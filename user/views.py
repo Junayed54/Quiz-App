@@ -25,7 +25,7 @@ class UserRegistrationView(generics.CreateAPIView):
                     "message": "user with this email already exists.",
                     "data": {}
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_200_OK,
             )
         
         user = serializer.save()
@@ -37,7 +37,7 @@ class UserRegistrationView(generics.CreateAPIView):
                     "data": UserSerializer(user).data
                 }
             },
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_200_OK,
         )
 
 
@@ -58,7 +58,7 @@ class UserLoginView(generics.GenericAPIView):
                     "message": "Invalid credentials",
                     "data": {}
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_200_OK,
             )
         
         return Response(
