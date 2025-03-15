@@ -183,10 +183,12 @@ class GetQuestionsView(APIView):
                         "question_id": str(question.id),
                         "question": question.question_text,
                         "answer_set": answer_set
-                    }
-                },
-                "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
-                "is_last_question": current_question_index + 1 >= len(questions)
+                    },
+                    "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
+                    "is_last_question": current_question_index + 1 >= len(questions)
+                    
+                }
+                
             },
             status=status.HTTP_200_OK
         )
