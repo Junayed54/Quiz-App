@@ -17,7 +17,7 @@ class QuizAdmin(admin.ModelAdmin):
         
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'title', 'category_type')
+    list_display = ('id', 'title', 'category_type', 'access_mode')
     search_fields = ('title', 'category_type')
     list_filter = ('category_type',)
     ordering = ('title',)
