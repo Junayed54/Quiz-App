@@ -32,7 +32,12 @@ class Category(models.Model):
         ('reading', 'Reading'),
     ])
     quiz = models.ForeignKey(Quiz, related_name='categories', on_delete=models.CASCADE)
-
+    access_mode = models.CharField(max_length=50, choices=[
+        ('public', 'Public'),
+        ('private', 'Private'),
+    ], default='public')
+    
+    
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.quiz:

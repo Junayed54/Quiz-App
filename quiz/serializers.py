@@ -52,7 +52,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'title', 'category_type', 'items', 'quiz']
+        fields = ['id', 'title','access_mode', 'category_type', 'items', 'quiz']
 
     def create(self, validated_data):
         

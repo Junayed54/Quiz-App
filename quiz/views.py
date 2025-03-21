@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
+from rest_framework.permissions import AllowAny
 import pandas as pd
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
@@ -77,6 +78,41 @@ class CategoryCreateAPIView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+
+class CategoryPartialUpdateAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            category = Category.objects.get(pk=pk)
+        except Category.DoesNotExist:
+            return Response({
+                "type": "error",
+                "message": "Category not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = CategorySerializer(category, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "type": "success",
+                "message": "Category updated successfully",
+                "data": {
+                    "data": serializer.data,
+                }
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "type": "error",
+            "message": "Category update failed.",
+            "data": {
+                "data": serializer.errors,
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class ItemCreateAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -110,6 +146,40 @@ class ItemCreateAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+class ItemPartialUpdateAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            item = Item.objects.get(pk=pk)
+        except Item.DoesNotExist:
+            return Response({
+                "type": "error",
+                "message": "Item not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ItemSerializer(item, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "type": "success",
+                "message": "Item updated successfully",
+                "data": {
+                    "data": serializer.data,
+                }
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "type": "error",
+            "message": "Item update failed.",
+            "data": {
+                "data": serializer.errors,
+            }
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     
 class GetQuestionsView(APIView):
@@ -228,47 +298,157 @@ class GetQuestionsView(APIView):
 #                 "quiz_completed": True
 #             }, status=status.HTTP_200_OK)
 
+# class DashboardView(APIView):
+#     def get(self, request, *args, **kwargs):
+#         # Initialize response data
+#         user = None
+#         is_logged_in = False
+#         response_type = "success"
+#         message = "Dashboard fetched successfully"
+#         status_code = status.HTTP_200_OK
+
+#         # Attempt JWT authentication
+#         try:
+#             jwt_auth = JWTAuthentication()
+#             auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
+
+#             if auth_result is not None:
+#                 user, auth = auth_result
+#                 is_logged_in = True
+#         except (InvalidToken, AuthenticationFailed):
+#             response_type = "error"
+#             message = "Invalid or expired token"
+#             status_code = status.HTTP_200_OK  # Unauthorized response
+
+#         # Fetch quizzes
+#         quizzes = Quiz.objects.all()
+#         quiz_data = []
+
+#         for quiz in quizzes:
+#             total_questions = quiz.calculate_total_questions()
+#             quiz.total_questions = total_questions
+#             quiz.save()
+
+#             categories = Category.objects.filter(quiz=quiz)
+#             task_category = []
+
+#             for category in categories:
+#                 items = Item.objects.filter(category=category)
+#                 task_items = []
+
+#                 for item in items:
+#                     quiz_attempt_data = None
+#                     if user:  # Include user-specific quiz attempt data only if authenticated
+#                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
+#                         if quiz_attempt:
+#                             quiz_attempt_data = {
+#                                 "total_questions": quiz_attempt.total_questions,
+#                                 "correct_answers": quiz_attempt.correct_answers,
+#                                 "wrong_answers": quiz_attempt.wrong_answers,
+#                                 "score": quiz_attempt.score,
+#                             }
+
+#                     leaderboard_data = Leaderboard.objects.filter(item=item).order_by('-score')[:10]
+#                     leaderboard = [
+#                         {
+#                             "user": entry.user.username,
+#                             "score": entry.score,
+#                             "rank": entry.rank,
+#                         }
+#                         for entry in leaderboard_data
+#                     ]
+
+#                     task_items.append({
+#                         "item_id": str(item.id),
+#                         "item_title": item.title,
+#                         "item_subtitle": item.subtitle,
+#                         "item_button_label": item.button_label or "Play",
+#                         "access_mode": item.access_mode or "public",
+#                         "item_type": item.item_type or "default",
+#                         "quiz_attempt": quiz_attempt_data,  # Only if user is authenticated
+#                         "leaderboard": leaderboard,  # Always included
+#                     })
+
+#                 task_category.append({
+#                     "category_id": str(category.id),
+#                     "category_title": category.title,
+#                     "category_type": category.category_type or "default",
+#                     "task_items": task_items,
+#                 })
+
+#             quiz_data.append({
+#                 "quiz_id": str(quiz.id),
+#                 "quiz_title": quiz.title,
+#                 "quiz_description": quiz.description,
+#                 "total_questions": quiz.total_questions,
+#                 "created_at": quiz.created_at,
+#                 "updated_at": quiz.updated_at,
+#                 "categories": task_category,
+#             })
+
+#         # Construct response
+#         return Response(
+#             {
+#                 "type": response_type,  # "success" or "error"
+#                 "message": message,
+#                 "data": {
+#                     "is_logged_in": is_logged_in,
+#                     "data": quiz_data,  # Renamed to "quizzes" for clarity
+#                 },
+#             },
+#             status=status.HTTP_200_OK
+#         )
+        
+        
 class DashboardView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [AllowAny]  # Allow access, but restrict private content
+
     def get(self, request, *args, **kwargs):
-        # Initialize response data
         user = None
-        is_logged_in = False
         response_type = "success"
         message = "Dashboard fetched successfully"
-        status_code = status.HTTP_200_OK
 
-        # Attempt JWT authentication
+        # Authenticate the user using JWT
         try:
             jwt_auth = JWTAuthentication()
             auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
+            if auth_result:
+                user, auth = auth_result  # Set user if authentication is successful
+        except AuthenticationFailed:
+            pass  # User remains None if authentication fails
 
-            if auth_result is not None:
-                user, auth = auth_result
-                is_logged_in = True
-        except (InvalidToken, AuthenticationFailed):
-            response_type = "error"
-            message = "Invalid or expired token"
-            status_code = status.HTTP_200_OK  # Unauthorized response
+        # try:
+        #     user, _ = jwt_auth.authenticate(request)  # Only need the user
+        # except AuthenticationFailed:
+        #     print("hello world")
+        #     return Response({
+        #         "type": "error",
+        #         "message": "Authentication failed. Please provide a valid token."
+        #     }, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Fetch quizzes
         quizzes = Quiz.objects.all()
         quiz_data = []
 
         for quiz in quizzes:
-            total_questions = quiz.calculate_total_questions()
-            quiz.total_questions = total_questions
-            quiz.save()
-
             categories = Category.objects.filter(quiz=quiz)
-            task_category = []
+            filtered_categories = []
 
             for category in categories:
+                # Hide private categories for unauthenticated users
+                if not user and category.access_mode == "private":
+                    continue  
+
                 items = Item.objects.filter(category=category)
-                task_items = []
+                filtered_items = []
 
                 for item in items:
+                    # Hide private items for unauthenticated users
+                    if not user and item.access_mode == "private":
+                        continue  
+
                     quiz_attempt_data = None
-                    if user:  # Include user-specific quiz attempt data only if authenticated
+                    if user:
                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
                         if quiz_attempt:
                             quiz_attempt_data = {
@@ -288,23 +468,26 @@ class DashboardView(APIView):
                         for entry in leaderboard_data
                     ]
 
-                    task_items.append({
+                    filtered_items.append({
                         "item_id": str(item.id),
                         "item_title": item.title,
                         "item_subtitle": item.subtitle,
                         "item_button_label": item.button_label or "Play",
                         "access_mode": item.access_mode or "public",
                         "item_type": item.item_type or "default",
-                        "quiz_attempt": quiz_attempt_data,  # Only if user is authenticated
-                        "leaderboard": leaderboard,  # Always included
+                        "quiz_attempt": quiz_attempt_data,
+                        "leaderboard": leaderboard,
                     })
 
-                task_category.append({
-                    "category_id": str(category.id),
-                    "category_title": category.title,
-                    "category_type": category.category_type or "default",
-                    "task_items": task_items,
-                })
+                # Ensure authenticated users see private categories
+                if user or filtered_items:
+                    filtered_categories.append({
+                        "category_id": str(category.id),
+                        "category_title": category.title,
+                        "category_type": category.category_type or "default",
+                        "access_mode": category.access_mode,
+                        "task_items": filtered_items,
+                    })
 
             quiz_data.append({
                 "quiz_id": str(quiz.id),
@@ -313,24 +496,20 @@ class DashboardView(APIView):
                 "total_questions": quiz.total_questions,
                 "created_at": quiz.created_at,
                 "updated_at": quiz.updated_at,
-                "categories": task_category,
+                "categories": filtered_categories,
             })
 
-        # Construct response
         return Response(
             {
-                "type": response_type,  # "success" or "error"
+                "type": response_type,
                 "message": message,
                 "data": {
-                    "is_logged_in": is_logged_in,
-                    "data": quiz_data,  # Renamed to "quizzes" for clarity
+                    "quizzes": quiz_data,
                 },
             },
             status=status.HTTP_200_OK
         )
-        
-        
-        
+
         
 class QuestionUploadView(APIView):
     authentication_classes = [JWTAuthentication]
