@@ -11,8 +11,8 @@ from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import AccessToken
 from .models import *
 from .serializers import *
-
-
+from user.models import *
+import uuid
 
 
 
@@ -238,30 +238,32 @@ class GetQuestionsView(APIView):
             {
                 "answer_id": str(option.id),
                 "answer": option.option_text,
-                "is_ture": option.is_correct
+                "is_true": option.is_correct
             }
             for option in options
         ]
 
         # Response for the current question
+        
         return Response(
             {
                 "type": "success",
                 "message": "Question fetched successfully",
                 "data": {
-                    "data": {
-                        "question_id": str(question.id),
-                        "question": question.question_text,
-                        "answer_set": answer_set
-                    },
+                    "data": [  # Now sending as a list
+                        {
+                            "question_id": str(question.id),
+                            "question": question.question_text,
+                            "answer_set": answer_set
+                        }
+                    ],
                     "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
                     "is_last_question": current_question_index + 1 >= len(questions)
-                    
                 }
-                
             },
             status=status.HTTP_200_OK
         )
+
 
 # class GetQuestionView(APIView):
 #     def get(self, request, question_id=None):
@@ -418,14 +420,13 @@ class DashboardView(APIView):
         except AuthenticationFailed:
             pass  # User remains None if authentication fails
 
-        # try:
-        #     user, _ = jwt_auth.authenticate(request)  # Only need the user
-        # except AuthenticationFailed:
-        #     print("hello world")
-        #     return Response({
-        #         "type": "error",
-        #         "message": "Authentication failed. Please provide a valid token."
-        #     }, status=status.HTTP_401_UNAUTHORIZED)
+        # Get the user_transaction_id (from session or user)
+        if user:
+            # If the user is authenticated, set a guest-like identifier or exclude the ID
+            user_transaction_id = None  # Do not send user.id for authenticated users
+        else:
+            # If the user is not authenticated, get the guest ID from session
+            user_transaction_id = request.session.get("guest_id")
 
         quizzes = Quiz.objects.all()
         quiz_data = []
@@ -506,9 +507,11 @@ class DashboardView(APIView):
                 "data": {
                     "quizzes": quiz_data,
                 },
+                "user_transaction_id": user_transaction_id  # Send None or guest ID here
             },
             status=status.HTTP_200_OK
         )
+
 
         
 class QuestionUploadView(APIView):

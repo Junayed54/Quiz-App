@@ -42,6 +42,7 @@ class UserOpenAccount(models.Model):
     os = models.CharField(max_length=255, null=True, blank=True)
     first_seen_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
+   
     
     STATUS_CHOICES = [
         ('active', 'Active'),
