@@ -506,8 +506,9 @@ class DashboardView(APIView):
                 "message": message,
                 "data": {
                     "quizzes": quiz_data,
+                    "user_transaction_id": user_transaction_id  # Send None or guest ID here
                 },
-                "user_transaction_id": user_transaction_id  # Send None or guest ID here
+                
             },
             status=status.HTTP_200_OK
         )
