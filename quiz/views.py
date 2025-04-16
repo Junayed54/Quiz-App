@@ -515,12 +515,100 @@ class DashboardView(APIView):
 
 
         
+# class QuestionUploadView(APIView):
+#     authentication_classes = [JWTAuthentication]
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request, *args, **kwargs):
+#         # Ensure a file is provided
+#         file = request.FILES.get('file')
+#         if not file:
+#             return Response(
+#                 {
+#                     "type": "error",
+#                     "message": "No file uploaded.",
+#                     "data": {},
+#                 },
+#                 status=status.HTTP_200_OK
+#             )
+
+#         try:
+#             # Parse the uploaded Excel file
+#             df = pd.read_excel(file)
+
+#             # Expected columns
+#             required_columns = [
+#                 'Question', 'Subject', 'Category', 'Options_num', 
+#                 'Option1', 'Option2', 'Option3', 'Option4', 'Answer'
+#             ]
+
+#             if not all(col in df.columns for col in required_columns):
+#                 return Response(
+#                     {
+#                         "type": "error",
+#                         "message": "Excel file is missing required columns.",
+#                         "data": {},
+#                     },
+#                     status=status.HTTP_200_OK
+#                 )
+
+#             with transaction.atomic():  # Ensure atomicity
+#                 for _, row in df.iterrows():
+#                     # Retrieve or validate category and subject (assuming Item represents Subject here)
+#                     category_id = row['Category']
+#                     subject_id = row['Subject']
+#                     question_text = row['Question']
+#                     options_num = int(row['Options_num'])
+#                     answers = row['Answer'].split(',')  # Expected format: "Option1,Option3"
+#                     answers = [answer.strip().capitalize() for answer in answers]  # Ensure answers are properly formatted
+
+#                     # Fetch or create category and subject
+#                     category, created = Category.objects.get_or_create(id=category_id)
+#                     item, created = Item.objects.get_or_create(id=subject_id)
+
+#                     # Create or update the question
+#                     question, created = Question.objects.get_or_create(
+#                         question_text=question_text,
+#                         item=item
+#                     )
+
+#                     # Create or update options
+#                     for i in range(1, options_num + 1):
+#                         option_text = row.get(f'Option{i}')
+#                         if option_text:
+#                             option_text = option_text.capitalize()  # Convert option text to match format (e.g., Option1)
+#                             is_correct = f'Option{i}'.capitalize() in answers
+#                             Option.objects.update_or_create(
+#                                 question=question,
+#                                 option_text=option_text,
+#                                 defaults={'is_correct': is_correct}
+#                             )
+
+#             return Response(
+#                 {
+#                     "type": "success",
+#                     "message": "Questions uploaded successfully!",
+#                     "data": {},
+#                 },
+#                 status=status.HTTP_200_OK
+#             )
+
+#         except Exception as e:
+#             return Response(
+#                 {
+#                     "type": "error",
+#                     "message": str(e),
+#                     "data": {},
+#                 },
+#                 status=status.HTTP_200_OK
+#             )
+
+
 class QuestionUploadView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        # Ensure a file is provided
         file = request.FILES.get('file')
         if not file:
             return Response(
@@ -533,12 +621,10 @@ class QuestionUploadView(APIView):
             )
 
         try:
-            # Parse the uploaded Excel file
             df = pd.read_excel(file)
 
-            # Expected columns
             required_columns = [
-                'Question', 'Subject', 'Category', 'Options_num', 
+                'Question', 'Subject', 'Category', 'Options_num',
                 'Option1', 'Option2', 'Option3', 'Option4', 'Answer'
             ]
 
@@ -552,32 +638,32 @@ class QuestionUploadView(APIView):
                     status=status.HTTP_200_OK
                 )
 
-            with transaction.atomic():  # Ensure atomicity
+            with transaction.atomic():
                 for _, row in df.iterrows():
-                    # Retrieve or validate category and subject (assuming Item represents Subject here)
-                    category_id = row['Category']
-                    subject_id = row['Subject']
-                    question_text = row['Question']
-                    options_num = int(row['Options_num'])
-                    answers = row['Answer'].split(',')  # Expected format: "Option1,Option3"
-                    answers = [answer.strip().capitalize() for answer in answers]  # Ensure answers are properly formatted
+                    category_id = str(row.get('Category')).strip() if not pd.isna(row.get('Category')) else None
+                    subject_id = str(row.get('Subject')).strip() if not pd.isna(row.get('Subject')) else None
+                    question_text = str(row.get('Question')).strip() if not pd.isna(row.get('Question')) else None
+                    options_num = int(row.get('Options_num')) if not pd.isna(row.get('Options_num')) else 0
+                    answer_field = str(row.get('Answer')).strip() if not pd.isna(row.get('Answer')) else ""
+                    answers = [a.strip().capitalize() for a in answer_field.split(',') if a.strip()]
 
-                    # Fetch or create category and subject
-                    category, created = Category.objects.get_or_create(id=category_id)
-                    item, created = Item.objects.get_or_create(id=subject_id)
+                    if not all([category_id, subject_id, question_text]) or options_num == 0:
+                        continue  # Skip incomplete rows
 
-                    # Create or update the question
-                    question, created = Question.objects.get_or_create(
+                    category, _ = Category.objects.get_or_create(id=category_id)
+                    item, _ = Item.objects.get_or_create(id=subject_id)
+
+                    question, _ = Question.objects.get_or_create(
                         question_text=question_text,
                         item=item
                     )
 
-                    # Create or update options
                     for i in range(1, options_num + 1):
-                        option_text = row.get(f'Option{i}')
-                        if option_text:
-                            option_text = option_text.capitalize()  # Convert option text to match format (e.g., Option1)
-                            is_correct = f'Option{i}'.capitalize() in answers
+                        option_col = f'Option{i}'
+                        option_text = row.get(option_col)
+                        if not pd.isna(option_text):
+                            option_text = str(option_text).strip().capitalize()
+                            is_correct = option_col.capitalize() in answers
                             Option.objects.update_or_create(
                                 question=question,
                                 option_text=option_text,
@@ -602,7 +688,6 @@ class QuestionUploadView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
         
         
 # class SubmitAnswerView(APIView):
