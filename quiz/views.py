@@ -712,38 +712,28 @@ class QuestionUploadView(APIView):
 #                 status=status.HTTP_200_OK
 #             )
 
-class SubmitAnswerView(APIView):
+class SubmitAnswersView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         item_id = request.data.get("item_id")
-        question_id = request.data.get("question_id")
-        selected_option_ids = request.data.get("selected_option_ids", [])  # Accept list of option IDs
+        answers = request.data.get("answers", [])
         start_fresh = request.data.get("start_fresh", False)
-        next_question_index = request.data.get("current_question_index", 0) + 1
-        
+
         try:
-            question = Question.objects.get(id=question_id)
-            selected_options = Option.objects.filter(id__in=selected_option_ids, question=question)
-            
             item = Item.objects.get(id=item_id)
             category = item.category
             quiz = category.quiz
-        except (Question.DoesNotExist, Item.DoesNotExist, Category.DoesNotExist, Quiz.DoesNotExist):
+        except (Item.DoesNotExist, Category.DoesNotExist, Quiz.DoesNotExist):
             return Response(
-                {
-                    "type": "error",
-                    "message": "Invalid question, options, or item.",
-                    "data": {},
-                },
+                {"type": "error", "message": "Invalid item or quiz.", "data": {}},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Negative marking value from the Quiz model
         negative_marking = quiz.negative_marking
 
-        # Always create a new attempt if `start_fresh` is True
+        # Create or resume QuizAttempt
         if start_fresh:
             quiz_attempt = QuizAttempt.objects.create(
                 user=request.user,
@@ -754,7 +744,6 @@ class SubmitAnswerView(APIView):
                 score=0,
             )
         else:
-            # Resume incomplete attempt or create a new one
             quiz_attempt = QuizAttempt.objects.filter(user=request.user, item=item).order_by('-attempt_date').first()
             if not quiz_attempt or (quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions):
                 quiz_attempt = QuizAttempt.objects.create(
@@ -766,58 +755,54 @@ class SubmitAnswerView(APIView):
                     score=0,
                 )
 
-        # Retrieve correct answers for the question
-        correct_options = set(Option.objects.filter(question=question, is_correct=True).values_list("id", flat=True))
-        selected_options_set = set(selected_option_ids)
+        result_data = []
 
-        is_correct = selected_options_set == correct_options  # User's answer must match exactly the correct answers
+        for answer in answers:
+            question_id = answer.get("question_id")
+            selected_option_ids = answer.get("selected_option_ids", [])
 
-        if is_correct:
-            quiz_attempt.correct_answers += 1
-            quiz_attempt.score += 1  # Increment score for correct answer
-        else:
-            quiz_attempt.wrong_answers += 1
-            quiz_attempt.score -= negative_marking  # Decrease score for wrong answer
+            try:
+                question = Question.objects.get(id=question_id, item=item)
+            except Question.DoesNotExist:
+                continue  # Skip invalid question
+
+            correct_options = set(
+                Option.objects.filter(question=question, is_correct=True).values_list("id", flat=True)
+            )
+            selected_set = set(selected_option_ids)
+
+            is_correct = selected_set == correct_options
+
+            if is_correct:
+                quiz_attempt.correct_answers += 1
+                quiz_attempt.score += 1
+            else:
+                quiz_attempt.wrong_answers += 1
+                quiz_attempt.score -= negative_marking
+
+            result_data.append({
+                "question_id": question_id,
+                "is_correct": is_correct,
+                "selected_options": list(selected_set),
+                "correct_options": list(correct_options),
+            })
 
         quiz_attempt.save()
 
-        # Fetch next question
-        questions = Question.objects.filter(item=item).order_by('id')
-        if next_question_index < len(questions):
-            next_question = questions[next_question_index]
-            options = Option.objects.filter(question=next_question)
-            answer_set = [
-                {"answer_id": str(option.id), "answer": option.option_text}
-                for option in options
-            ]
-
-            return Response(
-                {
-                    "type": "success",
-                    "message": "Answer submitted successfully.",
-                    "data": {
-                        "is_correct": is_correct,
-                        "next_question": {
-                            "question_id": str(next_question.id),
-                            "question": next_question.question_text,
-                            "answer_set": answer_set,
-                        },
-                        "is_last_question": next_question_index + 1 >= len(questions),
-                    },
+        return Response(
+            {
+                "type": "success",
+                "message": "All answers submitted successfully.",
+                "data": {
+                    "results": result_data,
+                    "score": quiz_attempt.score,
+                    "correct_answers": quiz_attempt.correct_answers,
+                    "wrong_answers": quiz_attempt.wrong_answers,
+                    "total_questions": quiz_attempt.total_questions,
+                    "quiz_completed": (
+                        quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions
+                    ),
                 },
-                status=status.HTTP_200_OK
-            )
-        else:
-            return Response(
-                {
-                    "type": "success",
-                    "message": "Quiz completed successfully.",
-                    "data": {
-                        "is_correct": is_correct,
-                        "score": quiz_attempt.score,
-                        "correct_answers": quiz_attempt.correct_answers,
-                        "wrong_answers": quiz_attempt.wrong_answers,
-                    },
-                },
-                status=status.HTTP_200_OK
-            )
+            },
+            status=status.HTTP_200_OK
+        )
