@@ -56,17 +56,18 @@ class Item(models.Model):
     ], default='public')
     item_type = models.CharField(max_length=100)
     category = models.ForeignKey(Category, related_name='items', on_delete=models.CASCADE)
-    
+    questions = models.ManyToManyField('Question', related_name='items')  # <-- this line added
+
     def __str__(self):
         return self.title
 
 
 class Question(models.Model):
     question_text = models.TextField()
-    item = models.ForeignKey(Item, related_name='questions', on_delete=models.CASCADE)
 
     def __str__(self):
         return self.question_text
+
 
 
 class Option(models.Model):

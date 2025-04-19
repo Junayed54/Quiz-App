@@ -13,38 +13,36 @@ class OptionSerializer(serializers.ModelSerializer):
 
 
 class QuestionSerializer(serializers.ModelSerializer):
-    options = OptionSerializer(many=True, write_only=True)
+    options = OptionSerializer(many=True)
 
     class Meta:
         model = Question
         fields = ['id', 'question_text', 'options']
 
-    def create(self, validated_data):
-        options_data = validated_data.pop('options')
-        question = Question.objects.create(**validated_data)
-        for option_data in options_data:
-            Option.objects.create(question=question, **option_data)
-        return question
-
 
 class ItemSerializer(serializers.ModelSerializer):
     questions = QuestionSerializer(many=True, write_only=True, required=False)
+    questions_detail = QuestionSerializer(many=True, read_only=True, source='questions')
     category = serializers.IntegerField(write_only=True)
+
     class Meta:
         model = Item
-        fields = ['id', 'title', 'subtitle', 'button_label', 'access_mode', 'item_type', 'questions', 'category']
+        fields = ['id', 'title', 'subtitle', 'button_label', 'access_mode', 'item_type', 'questions', 'questions_detail', 'category']
 
     def create(self, validated_data):
         category_id = validated_data.pop('category')
+        questions_data = validated_data.pop('questions', [])
         category = Category.objects.get(id=category_id)
-        # questions_data = validated_data.pop('questions')
+
         item = Item.objects.create(category=category, **validated_data)
-        # for question_data in questions_data:
-        #     options_data = question_data.pop('options')
-        #     question = Question.objects.create(item=item, **question_data)
-        #     for option_data in options_data:
-        #         Option.objects.create(question=question, **option_data)
+
+        for question_data in questions_data:
+            # If Question has nested options, handle them here.
+            question = Question.objects.create(**question_data)
+            item.questions.add(question)
+
         return item
+
 
 
 class CategorySerializer(serializers.ModelSerializer):

@@ -25,11 +25,17 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):
-    list_display = ('id', 'title', 'category', 'access_mode', 'item_type')
+    list_display = ('id', 'title', 'category', 'access_mode', 'item_type', 'question_count')
     search_fields = ('title', 'subtitle', 'item_type')
     list_filter = ('access_mode', 'item_type', 'category')
     autocomplete_fields = ('category',)
+    filter_horizontal = ('questions',)  # For ManyToManyField UI
     ordering = ('title',)
+
+    def question_count(self, obj):
+        return obj.questions.count()
+    question_count.short_description = 'Questions Linked'
+
 
 
 class OptionInline(admin.TabularInline):
@@ -40,11 +46,16 @@ class OptionInline(admin.TabularInline):
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'question_text', 'item')
+    list_display = ('id', 'question_text', 'get_items')
     search_fields = ('question_text',)
-    list_filter = ('item__category',)
-    autocomplete_fields = ('item',)
+    list_filter = ('items__category',)
+    autocomplete_fields = ('items',)
     inlines = [OptionInline]
+
+    def get_items(self, obj):
+        return ", ".join([item.title for item in obj.items.all()])
+    get_items.short_description = 'Items'
+
 
 
 @admin.register(Option)

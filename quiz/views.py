@@ -184,13 +184,13 @@ class ItemPartialUpdateAPIView(APIView):
     
 class GetQuestionsView(APIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = []  # Optional if you want to handle auth manually
 
     def post(self, request, *args, **kwargs):
         category_id = request.data.get('category_id')
         item_id = request.data.get('item_id')
-        current_question_index = request.data.get('current_question_index', 0)  # Default to the first question
-        
+        current_question_index = int(request.data.get('current_question_index', 0))
+
         try:
             category = Category.objects.get(id=category_id)
             item = Item.objects.get(id=item_id, category=category)
@@ -199,9 +199,7 @@ class GetQuestionsView(APIView):
                 {
                     "type": "error",
                     "message": "Category not found.",
-                    "data": {
-                        "data": "Category not found."
-                    }
+                    "data": {"questions": "Category not found."}
                 },
                 status=status.HTTP_200_OK
             )
@@ -210,30 +208,47 @@ class GetQuestionsView(APIView):
                 {
                     "type": "error",
                     "message": "Item not found in the specified category.",
-                    "data": {
-                        "data": "Item not found."
-                    }
+                    "data": {"questions": "Item not found."}
                 },
                 status=status.HTTP_200_OK
             )
 
-        # Get questions
-        questions = Question.objects.filter(item=item)
-        
-        if current_question_index < 0 or current_question_index >= len(questions):
+        # Access control
+        if item.access_mode == "private" and not request.user.is_authenticated:
+            return Response(
+                {
+                    "type": "error",
+                    "message": "Authentication required to access this item.",
+                    "data": {"questions": "Unauthorized access."}
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        questions = item.questions.all()
+
+        if not questions.exists():
+            return Response(
+                {
+                    "type": "error",
+                    "message": "No questions linked to this item.",
+                    "data": {"questions": "No questions found."}
+                },
+                status=status.HTTP_200_OK
+            )
+
+        if current_question_index < 0 or current_question_index >= questions.count():
             return Response(
                 {
                     "type": "error",
                     "message": "Invalid question index.",
-                    "data": {
-                        "data": "Invalid question index."
-                    }
+                    "data": {"questions": "Invalid question index."}
                 },
                 status=status.HTTP_200_OK
             )
 
         question = questions[current_question_index]
         options = Option.objects.filter(question=question)
+
         answer_set = [
             {
                 "answer_id": str(option.id),
@@ -243,26 +258,25 @@ class GetQuestionsView(APIView):
             for option in options
         ]
 
-        # Response for the current question
-        
         return Response(
             {
                 "type": "success",
                 "message": "Question fetched successfully",
                 "data": {
-                    "data": [  # Now sending as a list
+                    "questions": [
                         {
                             "question_id": str(question.id),
                             "question": question.question_text,
                             "answer_set": answer_set
                         }
                     ],
-                    "next_question_index": current_question_index + 1 if current_question_index + 1 < len(questions) else None,
-                    "is_last_question": current_question_index + 1 >= len(questions)
+                    "next_question_index": current_question_index + 1 if current_question_index + 1 < questions.count() else None,
+                    "is_last_question": current_question_index + 1 >= questions.count()
                 }
             },
             status=status.HTTP_200_OK
         )
+
 
 
 # class GetQuestionView(APIView):
@@ -637,9 +651,12 @@ class QuestionUploadView(APIView):
                     },
                     status=status.HTTP_200_OK
                 )
+            print("hello")
 
             with transaction.atomic():
+                
                 for _, row in df.iterrows():
+                    
                     category_id = str(row.get('Category')).strip() if not pd.isna(row.get('Category')) else None
                     subject_id = str(row.get('Subject')).strip() if not pd.isna(row.get('Subject')) else None
                     question_text = str(row.get('Question')).strip() if not pd.isna(row.get('Question')) else None
@@ -647,29 +664,63 @@ class QuestionUploadView(APIView):
                     answer_field = str(row.get('Answer')).strip() if not pd.isna(row.get('Answer')) else ""
                     answers = [a.strip().capitalize() for a in answer_field.split(',') if a.strip()]
 
-                    if not all([category_id, subject_id, question_text]) or options_num == 0:
-                        continue  # Skip incomplete rows
+                    # if not all([category_id, subject_id, question_text]) or options_num == 0:
+                    #     continue  # Skip incomplete rows
+                    
+                    
+                    # Check if the category exists
+                    category = Category.objects.get(id=category_id)
+                    
+                    if not category:
+                        return Response(
+                            {
+                                "type": "error",
+                                "message": f"Category with ID {category_id} not found.",
+                                "data": {},
+                            },
+                            status=status.HTTP_200_OK
+                        )
 
-                    category, _ = Category.objects.get_or_create(id=category_id)
-                    item, _ = Item.objects.get_or_create(id=subject_id)
+                    # Check if the item exists
+                    item = Item.objects.filter(id=subject_id, category=category).first()
+                    if not item:
+                        return Response(
+                            {
+                                "type": "error",
+                                "message": f"Item with ID {subject_id} in Category {category.title} not found.",
+                                "data": {},
+                            },
+                            status=status.HTTP_200_OK
+                        )
+                        
+                    
 
-                    question, _ = Question.objects.get_or_create(
-                        question_text=question_text,
-                        item=item
-                    )
+                    # Create or get the question
+                    question, _ = Question.objects.get_or_create(question_text=question_text)
+                    
+                    # Link question to item (many-to-many relationship)
+                    item.questions.add(question)
 
-                    for i in range(1, options_num + 1):
+                    # Add options for the question
+                    options = []
+                    i = 1
+                    while True:
                         option_col = f'Option{i}'
                         option_text = row.get(option_col)
-                        if not pd.isna(option_text):
-                            option_text = str(option_text).strip().capitalize()
-                            is_correct = option_col.capitalize() in answers
-                            Option.objects.update_or_create(
-                                question=question,
-                                option_text=option_text,
-                                defaults={'is_correct': is_correct}
-                            )
+                        if pd.isna(option_text):  # Break the loop if no more options are found
+                            break
+                        options.append(option_text.strip().capitalize())
+                        i += 1
 
+                    # If there are options, create/update them
+                    for option_text in options:
+                        is_correct = option_text in answers  # Check if the option is correct
+                        Option.objects.update_or_create(
+                            question=question,
+                            option_text=option_text,
+                            defaults={'is_correct': is_correct}
+                        )
+            
             return Response(
                 {
                     "type": "success",
@@ -688,6 +739,8 @@ class QuestionUploadView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+
+
         
         
 # class SubmitAnswerView(APIView):
