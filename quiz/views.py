@@ -30,7 +30,7 @@ class QuizCreateAPIView(APIView):
                     "type": "success",
                     "message": "Quiz created successfully",
                     "data": {
-                        "data": serializer.data,
+                        "quiz": serializer.data,
                     }
                 },
                 status=status.HTTP_200_OK,
@@ -40,7 +40,7 @@ class QuizCreateAPIView(APIView):
                 "type": "error",
                 "message": "Invalid data provided",
                 "data": {
-                    "data": serializer.errors,
+                    "quiz": serializer.errors,
                 }
             },
             status=status.HTTP_200_OK,
@@ -64,7 +64,7 @@ class CategoryCreateAPIView(APIView):
                 "type": "success",
                 "message": "Category created successfully",
                 "data": {
-                    "data": serializer.data,
+                    "category": serializer.data,
                 }
             }, status.HTTP_200_OK)
         
@@ -73,7 +73,7 @@ class CategoryCreateAPIView(APIView):
             "type": "error",
             "message": "Category creation failed.",
             "data": {
-                "data": serializer.errors,
+                "category": serializer.errors,
             }
         }, status=status.HTTP_200_OK)
 
@@ -108,7 +108,7 @@ class CategoryPartialUpdateAPIView(APIView):
             "type": "error",
             "message": "Category update failed.",
             "data": {
-                "data": serializer.errors,
+                "category": serializer.errors,
             }
         }, status=status.HTTP_400_BAD_REQUEST)
 
@@ -129,7 +129,7 @@ class ItemCreateAPIView(APIView):
                     "type": "success",
                     "message": "Item created successfully",
                     "data": {
-                        "data": serializer.data,
+                        "item": serializer.data,
                     }
                 },
                 status=status.HTTP_200_OK
@@ -141,7 +141,7 @@ class ItemCreateAPIView(APIView):
                 "type": "error",
                 "message": "Invalid data provided",
                 "data": {
-                    "data": serializer.errors,
+                    "item": serializer.errors,
                 }
             },
             status=status.HTTP_200_OK
@@ -169,7 +169,7 @@ class ItemPartialUpdateAPIView(APIView):
                 "type": "success",
                 "message": "Item updated successfully",
                 "data": {
-                    "data": serializer.data,
+                    "item": serializer.data,
                 }
             }, status=status.HTTP_200_OK)
 
@@ -177,7 +177,7 @@ class ItemPartialUpdateAPIView(APIView):
             "type": "error",
             "message": "Item update failed.",
             "data": {
-                "data": serializer.errors,
+                "item": serializer.errors,
             }
         }, status=status.HTTP_400_BAD_REQUEST)
 
