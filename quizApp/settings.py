@@ -43,7 +43,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'user.middleware.UserActivityMiddleware'
+    'user.middleware.UserActivityMiddleware',
+    'quiz.middleware.Force200Middleware',
 ]
 
 ROOT_URLCONF = 'quizApp.urls'
@@ -158,6 +159,7 @@ REST_FRAMEWORK = {
     # 'DEFAULT_PERMISSION_CLASSES': [
     #     'rest_framework.permissions.IsAuthenticated',
     # ],
+    'EXCEPTION_HANDLER': 'quiz.utils.custom_exception_handler.custom_exception_handler',
 }
 
 

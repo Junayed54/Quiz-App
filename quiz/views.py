@@ -9,6 +9,7 @@ from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import AccessToken
+
 from .models import *
 from .serializers import *
 from user.models import *
@@ -314,47 +315,58 @@ class GetQuestionsView(APIView):
 #                 "quiz_completed": True
 #             }, status=status.HTTP_200_OK)
 
+
+
+
+
 # class DashboardView(APIView):
+#     authentication_classes = [JWTAuthentication]
+#     permission_classes = [AllowAny]  # Allow access, but restrict private content
+
 #     def get(self, request, *args, **kwargs):
-#         # Initialize response data
 #         user = None
-#         is_logged_in = False
 #         response_type = "success"
 #         message = "Dashboard fetched successfully"
-#         status_code = status.HTTP_200_OK
 
-#         # Attempt JWT authentication
+#         # Authenticate the user using JWT
 #         try:
 #             jwt_auth = JWTAuthentication()
 #             auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
+#             if auth_result:
+#                 user, auth = auth_result  # Set user if authentication is successful
+#         except AuthenticationFailed:
+#             pass  # User remains None if authentication fails
 
-#             if auth_result is not None:
-#                 user, auth = auth_result
-#                 is_logged_in = True
-#         except (InvalidToken, AuthenticationFailed):
-#             response_type = "error"
-#             message = "Invalid or expired token"
-#             status_code = status.HTTP_200_OK  # Unauthorized response
+#         # Get the user_transaction_id (from session or user)
+#         if user:
+#             # If the user is authenticated, set a guest-like identifier or exclude the ID
+#             user_transaction_id = None  # Do not send user.id for authenticated users
+#         else:
+#             # If the user is not authenticated, get the guest ID from session
+#             user_transaction_id = request.session.get("guest_id")
 
-#         # Fetch quizzes
 #         quizzes = Quiz.objects.all()
 #         quiz_data = []
 
 #         for quiz in quizzes:
-#             total_questions = quiz.calculate_total_questions()
-#             quiz.total_questions = total_questions
-#             quiz.save()
-
 #             categories = Category.objects.filter(quiz=quiz)
-#             task_category = []
+#             filtered_categories = []
 
 #             for category in categories:
+#                 # Hide private categories for unauthenticated users
+#                 if not user and category.access_mode == "private":
+#                     continue  
+
 #                 items = Item.objects.filter(category=category)
-#                 task_items = []
+#                 filtered_items = []
 
 #                 for item in items:
+#                     # Hide private items for unauthenticated users
+#                     if not user and item.access_mode == "private":
+#                         continue  
+
 #                     quiz_attempt_data = None
-#                     if user:  # Include user-specific quiz attempt data only if authenticated
+#                     if user:
 #                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
 #                         if quiz_attempt:
 #                             quiz_attempt_data = {
@@ -374,23 +386,26 @@ class GetQuestionsView(APIView):
 #                         for entry in leaderboard_data
 #                     ]
 
-#                     task_items.append({
+#                     filtered_items.append({
 #                         "item_id": str(item.id),
 #                         "item_title": item.title,
 #                         "item_subtitle": item.subtitle,
 #                         "item_button_label": item.button_label or "Play",
 #                         "access_mode": item.access_mode or "public",
 #                         "item_type": item.item_type or "default",
-#                         "quiz_attempt": quiz_attempt_data,  # Only if user is authenticated
-#                         "leaderboard": leaderboard,  # Always included
+#                         "quiz_attempt": quiz_attempt_data,
+#                         "leaderboard": leaderboard,
 #                     })
 
-#                 task_category.append({
-#                     "category_id": str(category.id),
-#                     "category_title": category.title,
-#                     "category_type": category.category_type or "default",
-#                     "task_items": task_items,
-#                 })
+#                 # Ensure authenticated users see private categories
+#                 if user or filtered_items:
+#                     filtered_categories.append({
+#                         "category_id": str(category.id),
+#                         "category_title": category.title,
+#                         "category_type": category.category_type or "default",
+#                         "access_mode": category.access_mode,
+#                         "task_items": filtered_items,
+#                     })
 
 #             quiz_data.append({
 #                 "quiz_id": str(quiz.id),
@@ -399,23 +414,29 @@ class GetQuestionsView(APIView):
 #                 "total_questions": quiz.total_questions,
 #                 "created_at": quiz.created_at,
 #                 "updated_at": quiz.updated_at,
-#                 "categories": task_category,
+#                 "categories": filtered_categories,
 #             })
 
-#         # Construct response
 #         return Response(
 #             {
-#                 "type": response_type,  # "success" or "error"
+#                 "type": response_type,
 #                 "message": message,
 #                 "data": {
-#                     "is_logged_in": is_logged_in,
-#                     "data": quiz_data,  # Renamed to "quizzes" for clarity
+#                     "quizzes": quiz_data,
+#                     "access_token": user_transaction_id  # Send None or guest ID here
 #                 },
+                
 #             },
 #             status=status.HTTP_200_OK
 #         )
-        
-        
+
+
+
+
+
+
+
+
 class DashboardView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [AllowAny]  # Allow access, but restrict private content
@@ -424,6 +445,7 @@ class DashboardView(APIView):
         user = None
         response_type = "success"
         message = "Dashboard fetched successfully"
+        access_token = None
 
         # Authenticate the user using JWT
         try:
@@ -434,13 +456,12 @@ class DashboardView(APIView):
         except AuthenticationFailed:
             pass  # User remains None if authentication fails
 
-        # Get the user_transaction_id (from session or user)
-        if user:
-            # If the user is authenticated, set a guest-like identifier or exclude the ID
-            user_transaction_id = None  # Do not send user.id for authenticated users
+        # Get access token from headers if authenticated
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if user and auth_header.startswith("Bearer "):
+            access_token = auth_header.split(" ")[1]
         else:
-            # If the user is not authenticated, get the guest ID from session
-            user_transaction_id = request.session.get("guest_id")
+            access_token = request.session.get("guest_id")
 
         quizzes = Quiz.objects.all()
         quiz_data = []
@@ -452,7 +473,7 @@ class DashboardView(APIView):
             for category in categories:
                 # Hide private categories for unauthenticated users
                 if not user and category.access_mode == "private":
-                    continue  
+                    continue
 
                 items = Item.objects.filter(category=category)
                 filtered_items = []
@@ -460,7 +481,7 @@ class DashboardView(APIView):
                 for item in items:
                     # Hide private items for unauthenticated users
                     if not user and item.access_mode == "private":
-                        continue  
+                        continue
 
                     quiz_attempt_data = None
                     if user:
@@ -520,12 +541,12 @@ class DashboardView(APIView):
                 "message": message,
                 "data": {
                     "quizzes": quiz_data,
-                    "access_token": user_transaction_id  # Send None or guest ID here
+                    "access_token": access_token
                 },
-                
             },
             status=status.HTTP_200_OK
         )
+
 
 
         
