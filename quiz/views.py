@@ -638,7 +638,6 @@ class DashboardView(APIView):
 #                 status=status.HTTP_200_OK
 #             )
 
-
 class QuestionUploadView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -658,9 +657,11 @@ class QuestionUploadView(APIView):
         try:
             df = pd.read_excel(file)
 
+            # Normalize column names
+            df.columns = [col.lower() for col in df.columns]
             required_columns = [
-                'Question', 'Subject', 'Category', 'Options_num',
-                'Option1', 'Option2', 'Option3', 'Option4', 'Answer'
+                'question', 'subject', 'category', 'options_num',
+                'option1', 'option2', 'option3', 'option4', 'answer'
             ]
 
             if not all(col in df.columns for col in required_columns):
@@ -672,27 +673,20 @@ class QuestionUploadView(APIView):
                     },
                     status=status.HTTP_200_OK
                 )
-            print("hello")
 
             with transaction.atomic():
-                
                 for _, row in df.iterrows():
-                    
-                    category_id = str(row.get('Category')).strip() if not pd.isna(row.get('Category')) else None
-                    subject_id = str(row.get('Subject')).strip() if not pd.isna(row.get('Subject')) else None
-                    question_text = str(row.get('Question')).strip() if not pd.isna(row.get('Question')) else None
-                    options_num = int(row.get('Options_num')) if not pd.isna(row.get('Options_num')) else 0
-                    answer_field = str(row.get('Answer')).strip() if not pd.isna(row.get('Answer')) else ""
-                    answers = [a.strip().capitalize() for a in answer_field.split(',') if a.strip()]
+                    row_lower = {k.lower(): v for k, v in row.items()}
 
-                    # if not all([category_id, subject_id, question_text]) or options_num == 0:
-                    #     continue  # Skip incomplete rows
-                    
-                    
-                    # Check if the category exists
-                    category = Category.objects.get(id=category_id)
-                    
-                    if not category:
+                    category_id = str(row_lower.get('category')).strip() if not pd.isna(row_lower.get('category')) else None
+                    subject_id = str(row_lower.get('subject')).strip() if not pd.isna(row_lower.get('subject')) else None
+                    question_text = str(row_lower.get('question')).strip() if not pd.isna(row_lower.get('question')) else None
+                    options_num = int(row_lower.get('options_num')) if not pd.isna(row_lower.get('options_num')) else 0
+                    answer_field = str(row_lower.get('answer')).strip() if not pd.isna(row_lower.get('answer')) else ""
+
+                    try:
+                        category = Category.objects.get(id=category_id)
+                    except Category.DoesNotExist:
                         return Response(
                             {
                                 "type": "error",
@@ -702,7 +696,6 @@ class QuestionUploadView(APIView):
                             status=status.HTTP_200_OK
                         )
 
-                    # Check if the item exists
                     item = Item.objects.filter(id=subject_id, category=category).first()
                     if not item:
                         return Response(
@@ -713,35 +706,41 @@ class QuestionUploadView(APIView):
                             },
                             status=status.HTTP_200_OK
                         )
-                        
-                    
 
-                    # Create or get the question
                     question, _ = Question.objects.get_or_create(question_text=question_text)
-                    
-                    # Link question to item (many-to-many relationship)
                     item.questions.add(question)
 
-                    # Add options for the question
+                    # Extract options
                     options = []
                     i = 1
                     while True:
-                        option_col = f'Option{i}'
-                        option_text = row.get(option_col)
-                        if pd.isna(option_text):  # Break the loop if no more options are found
+                        option_col = f'option{i}'.lower()
+                        option_text = row_lower.get(option_col)
+                        if pd.isna(option_text):
                             break
-                        options.append(option_text.strip().capitalize())
+                        options.append(option_text.strip())
                         i += 1
 
-                    # If there are options, create/update them
+                    # Normalize answers from mixed format
+                    raw_answers = [a.strip().lower() for a in answer_field.split(',') if a.strip()]
+                    parsed_answers = []
+                    for ans in raw_answers:
+                        if ans.startswith('option') and ans[6:].isdigit():
+                            idx = int(ans[6:]) - 1
+                            if 0 <= idx < len(options):
+                                parsed_answers.append(options[idx].capitalize())
+                        else:
+                            parsed_answers.append(ans.capitalize())
+
+                    # Save options
                     for option_text in options:
-                        is_correct = option_text in answers  # Check if the option is correct
+                        is_correct = option_text.capitalize() in parsed_answers
                         Option.objects.update_or_create(
                             question=question,
-                            option_text=option_text,
+                            option_text=option_text.capitalize(),
                             defaults={'is_correct': is_correct}
                         )
-            
+
             return Response(
                 {
                     "type": "success",
@@ -760,6 +759,8 @@ class QuestionUploadView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+
+
 
 
         
@@ -921,7 +922,7 @@ class SubmitAnswersView(APIView):
             selected_option_ids = answer.get("selected_option_ids", [])
 
             try:
-                question = Question.objects.get(id=question_id, item=item)
+                question = Question.objects.get(id=question_id)
             except Question.DoesNotExist:
                 continue  # Skip invalid question
 
