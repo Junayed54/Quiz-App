@@ -7,6 +7,10 @@ class Force200Middleware(MiddlewareMixin):
         self.get_response = get_response
 
     def __call__(self, request):
+        # ✅ Skip middleware for admin, static, and media paths
+        if request.path.startswith('/admin') or request.path.startswith('/static') or request.path.startswith('/media'):
+            return self.get_response(request)
+
         try:
             response = self.get_response(request)
 
@@ -14,7 +18,6 @@ class Force200Middleware(MiddlewareMixin):
                 message = getattr(response, 'reason_phrase', 'An error occurred')
                 data = {}
 
-                # DRF response might have .data
                 if hasattr(response, 'data'):
                     if isinstance(response.data, dict):
                         message = response.data.get('detail') or str(response.data)
@@ -31,7 +34,6 @@ class Force200Middleware(MiddlewareMixin):
             return response
 
         except Exception as e:
-            # Catch unhandled Python errors
             return JsonResponse({
                 "type": "error",
                 "message": str(e),
