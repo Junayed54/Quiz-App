@@ -185,68 +185,69 @@ class ItemPartialUpdateAPIView(APIView):
 
     
 class GetQuestionsView(APIView):
-    # authentication_classes = [JWTAuthentication]
-    permission_classes = []  # Optional if you want to handle auth manually
+    authentication_classes = [CombinedJWTOrGuestAuthentication]
+    permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
         category_id = request.data.get('category_id')
         item_id = request.data.get('item_id')
         current_question_index = int(request.data.get('current_question_index', 0))
 
+        # ✅ Manual token validation
+        user = None
+        guest_user = None
+
+        if hasattr(request, "user") and request.user:
+            if getattr(request.user, "is_guest", False):
+                guest_user = request.user
+            elif isinstance(request.user, User):
+                user = request.user
+            else:
+                return Response({
+                    "type": "error",
+                    "message": "Invalid or missing token.",
+                    "data": {}
+                }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                "type": "error",
+                "message": "Authentication credentials were not provided.",
+                "data": {}
+            }, status=status.HTTP_200_OK)
+
+        # ✅ Get category and item
         try:
             category = Category.objects.get(id=category_id)
-            item = Item.objects.get(id=item_id, category=category)
         except Category.DoesNotExist:
-            return Response(
-                {
-                    "type": "error",
-                    "message": "Category not found.",
-                    "data": {"questions": "Category not found."}
-                },
-                status=status.HTTP_200_OK
-            )
-        except Item.DoesNotExist:
-            return Response(
-                {
-                    "type": "error",
-                    "message": "Item not found in the specified category.",
-                    "data": {"questions": "Item not found."}
-                },
-                status=status.HTTP_200_OK
-            )
+            return Response({
+                "type": "error",
+                "message": "Category not found.",
+                "data": {}
+            }, status=status.HTTP_200_OK)
 
-        # Access control
-        if item.access_mode == "private" and not request.user.is_authenticated:
-            return Response(
-                {
-                    "type": "error",
-                    "message": "Authentication required to access this item.",
-                    "data": {"questions": "Unauthorized access."}
-                },
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+        try:
+            item = Item.objects.get(id=item_id, category=category)
+        except Item.DoesNotExist:
+            return Response({
+                "type": "error",
+                "message": "Item not found in this category.",
+                "data": {}
+            }, status=status.HTTP_200_OK)
 
         questions = item.questions.all()
-
         if not questions.exists():
-            return Response(
-                {
-                    "type": "error",
-                    "message": "No questions linked to this item.",
-                    "data": {"questions": "No questions found."}
-                },
-                status=status.HTTP_200_OK
-            )
+            return Response({
+                "type": "error",
+                "message": "No questions linked to this item.",
+                "data": {}
+            }, status=status.HTTP_200_OK)
 
         if current_question_index < 0 or current_question_index >= questions.count():
-            return Response(
-                {
-                    "type": "error",
-                    "message": "Invalid question index.",
-                    "data": {"questions": "Invalid question index."}
-                },
-                status=status.HTTP_200_OK
-            )
+            return Response({
+                "type": "error",
+                "message": "Invalid question index.",
+                "data": {}
+            }, status=status.HTTP_200_OK)
 
         question = questions[current_question_index]
         options = Option.objects.filter(question=question)
@@ -260,25 +261,23 @@ class GetQuestionsView(APIView):
             for option in options
         ]
 
-        return Response(
-            {
-                "type": "success",
-                "message": "Question fetched successfully",
-                "data": {
-                    "questions": [
-                        {
-                            "question_id": str(question.id),
-                            "question": question.question_text,
-                            "answer_set": answer_set
-                        }
-                    ],
-                    "next_question_index": current_question_index + 1 if current_question_index + 1 < questions.count() else None,
-                    "is_last_question": current_question_index + 1 >= questions.count()
-                }
-            },
-            status=status.HTTP_200_OK
-        )
-
+        return Response({
+            "type": "success",
+            "message": "Question fetched successfully.",
+            "data": {
+                "question": {
+                    "question_id": str(question.id),
+                    "question": question.question_text,
+                    "answer_set": answer_set
+                },
+                "next_question_index": (
+                    current_question_index + 1
+                    if current_question_index + 1 < questions.count()
+                    else None
+                ),
+                "is_last_question": current_question_index + 1 >= questions.count()
+            }
+        }, status=status.HTTP_200_OK)
 
 
 # class GetQuestionView(APIView):

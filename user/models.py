@@ -67,6 +67,9 @@ class UserOpenAccount(models.Model):
     @property
     def is_guest(self):
         return True
+    @property
+    def is_authenticated(self):
+        return False
 
 
 
