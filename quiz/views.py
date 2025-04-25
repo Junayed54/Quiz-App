@@ -10,6 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import AccessToken
 
+from user.middleware import CombinedJWTOrGuestAuthentication 
 from .models import *
 from .serializers import *
 from user.models import *
@@ -184,7 +185,7 @@ class ItemPartialUpdateAPIView(APIView):
 
     
 class GetQuestionsView(APIView):
-    authentication_classes = [JWTAuthentication]
+    # authentication_classes = [JWTAuthentication]
     permission_classes = []  # Optional if you want to handle auth manually
 
     def post(self, request, *args, **kwargs):
@@ -434,31 +435,50 @@ class GetQuestionsView(APIView):
 
 
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.exceptions import AuthenticationFailed
 
+from django.conf import settings
+import jwt
+from jwt.exceptions import InvalidTokenError
 
 
 class DashboardView(APIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [AllowAny]  # Allow access, but restrict private content
+    permission_classes = [AllowAny]
 
     def get(self, request, *args, **kwargs):
         user = None
         response_type = "success"
         message = "Dashboard fetched successfully"
         access_token = None
+        open_account_id = None  # for guest ID tracking
 
-        # Authenticate the user using JWT
+        # Step 1: Try normal JWT (registered user)
         try:
             jwt_auth = JWTAuthentication()
-            auth_result = jwt_auth.authenticate(request)  # Returns (user, auth) or None
+            auth_result = jwt_auth.authenticate(request)
             if auth_result:
-                user, auth = auth_result  # Set user if authentication is successful
+                user, _ = auth_result
         except AuthenticationFailed:
-            pass  # User remains None if authentication fails
+            pass
 
-        # Get access token from headers if authenticated
-        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        if user and auth_header.startswith("Bearer "):
+        # Step 2: If not authenticated, try to parse guest token manually
+        auth_header = request.headers.get("Authorization", "")
+        if not user and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+                if decoded.get("is_guest"):
+                    open_account_id = decoded.get("open_account_id")
+                    access_token = token
+            except InvalidTokenError:
+                pass
+        elif user and auth_header.startswith("Bearer "):
             access_token = auth_header.split(" ")[1]
         else:
             access_token = request.session.get("guest_id")
@@ -471,16 +491,14 @@ class DashboardView(APIView):
             filtered_categories = []
 
             for category in categories:
-                # Hide private categories for unauthenticated users
-                if not user and category.access_mode == "private":
+                if category.access_mode == "private" and not user:
                     continue
 
                 items = Item.objects.filter(category=category)
                 filtered_items = []
 
                 for item in items:
-                    # Hide private items for unauthenticated users
-                    if not user and item.access_mode == "private":
+                    if item.access_mode == "private" and not user:
                         continue
 
                     quiz_attempt_data = None
@@ -515,8 +533,7 @@ class DashboardView(APIView):
                         "leaderboard": leaderboard,
                     })
 
-                # Ensure authenticated users see private categories
-                if user or filtered_items:
+                if filtered_items:
                     filtered_categories.append({
                         "category_id": str(category.id),
                         "category_title": category.title,
@@ -541,12 +558,11 @@ class DashboardView(APIView):
                 "message": message,
                 "data": {
                     "quizzes": quiz_data,
-                    "access_token": access_token
+                    "access_token": access_token,
                 },
             },
             status=status.HTTP_200_OK
         )
-
 
 
         
@@ -873,14 +889,15 @@ class QuestionUploadView(APIView):
 #             )
 
 class SubmitAnswersView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [CombinedJWTOrGuestAuthentication]
+    permission_classes = [AllowAny]  # We'll check manually inside
 
     def post(self, request, *args, **kwargs):
         item_id = request.data.get("item_id")
         answers = request.data.get("answers", [])
         start_fresh = request.data.get("start_fresh", False)
 
+        # Try to get the item, category, and quiz
         try:
             item = Item.objects.get(id=item_id)
             category = item.category
@@ -888,15 +905,33 @@ class SubmitAnswersView(APIView):
         except (Item.DoesNotExist, Category.DoesNotExist, Quiz.DoesNotExist):
             return Response(
                 {"type": "error", "message": "Invalid item or quiz.", "data": {}},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
 
         negative_marking = quiz.negative_marking
 
+        # Determine user or guest_user using is_guest
+        if getattr(request.user, "is_guest", False):
+            guest_user = request.user
+            user = None
+        elif isinstance(request.user, User):
+            user = request.user
+            guest_user = None
+        else:
+            user = None
+            guest_user = None
+
+        if not user and not guest_user:
+            return Response(
+                {"type": "error", "message": "Authentication credentials were not provided.", "data": {}},
+                status=status.HTTP_200_OK
+            )
+
         # Create or resume QuizAttempt
         if start_fresh:
             quiz_attempt = QuizAttempt.objects.create(
-                user=request.user,
+                user=user,
+                guest_user=guest_user,
                 item=item,
                 total_questions=item.questions.count(),
                 correct_answers=0,
@@ -904,10 +939,19 @@ class SubmitAnswersView(APIView):
                 score=0,
             )
         else:
-            quiz_attempt = QuizAttempt.objects.filter(user=request.user, item=item).order_by('-attempt_date').first()
-            if not quiz_attempt or (quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions):
+            filters = {"item": item}
+            if user:
+                filters["user"] = user
+            elif guest_user:
+                filters["guest_user"] = guest_user
+
+            quiz_attempt = QuizAttempt.objects.filter(**filters).order_by("-attempt_date").first()
+            if not quiz_attempt or (
+                quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions
+            ):
                 quiz_attempt = QuizAttempt.objects.create(
-                    user=request.user,
+                    user=user,
+                    guest_user=guest_user,
                     item=item,
                     total_questions=item.questions.count(),
                     correct_answers=0,
@@ -924,7 +968,7 @@ class SubmitAnswersView(APIView):
             try:
                 question = Question.objects.get(id=question_id)
             except Question.DoesNotExist:
-                continue  # Skip invalid question
+                continue  # Skip if question does not exist
 
             correct_options = set(
                 Option.objects.filter(question=question, is_correct=True).values_list("id", flat=True)

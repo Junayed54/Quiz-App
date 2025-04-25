@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 User = get_user_model()
+from user.models import UserOpenAccount
 class Quiz(models.Model):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -81,7 +82,19 @@ class Option(models.Model):
 
 
 class QuizAttempt(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    # Allow both authenticated users and guest users
+    user = models.ForeignKey(
+        User,  # This will link to the 'User' model, which can either be a regular user or a guest user
+        on_delete=models.CASCADE,
+        null=True,  # Null because guest users won't always be authenticated
+        blank=True  # Allow blank for guest users
+    )
+    guest_user = models.ForeignKey(
+        UserOpenAccount,  # This links to the guest user model
+        on_delete=models.CASCADE,
+        null=True,  # Null because regular users won't always have a guest user associated
+        blank=True  # Allow blank for authenticated users
+    )
     item = models.ForeignKey(Item, on_delete=models.CASCADE)  # Connect with Item
     total_questions = models.PositiveIntegerField()
     correct_answers = models.PositiveIntegerField(default=0)
@@ -90,7 +103,7 @@ class QuizAttempt(models.Model):
     attempt_date = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user} - {self.item.title}"
+        return f"{self.user or self.guest_user} - {self.item.title}"
 
     def calculate_score(self):
         """ Calculate total score based on correct answers. """

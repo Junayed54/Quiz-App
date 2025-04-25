@@ -71,25 +71,25 @@ AUTH_USER_MODEL = 'user.User'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',  # Use 'mysql' for MySQL
-        'NAME': 'quizApp',              # Your database name
-        'USER': 'root',                       # Your MySQL username
-        'PASSWORD': 'Bridgers@123',             # Your MySQL password
-        'HOST': 'localhost',                    # Your database host
-        'PORT': '3306',                         # Default MySQL port
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',  # Use 'mysql' for MySQL
+#         'NAME': 'quizApp',              # Your database name
+#         'USER': 'root',                       # Your MySQL username
+#         'PASSWORD': 'Bridgers@123',             # Your MySQL password
+#         'HOST': 'localhost',                    # Your database host
+#         'PORT': '3306',                         # Default MySQL port
+#     }
+# }
 
 
 
@@ -153,14 +153,14 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    # 'DEFAULT_AUTHENTICATION_CLASSES': (
-    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
-    # ),
-    # 'DEFAULT_PERMISSION_CLASSES': [
-    #     'rest_framework.permissions.IsAuthenticated',
-    # ],
-    'EXCEPTION_HANDLER': 'quiz.utils.custom_exception_handler.custom_exception_handler',
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'user.middleware.GuestAuthentication',  # Add the correct path to GuestAuthentication
+        'rest_framework.authentication.SessionAuthentication',  # Optional: include for session-based auth
+        'rest_framework.authentication.TokenAuthentication',  # Optional: include for token-based auth
+    ],
+    'EXCEPTION_HANDLER': 'quiz.utils.custom_exception_handler.custom_exception_handler',  # Your custom exception handler
 }
+
 
 
 SIMPLE_JWT = {

@@ -2,6 +2,8 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.db import models
 from django.contrib.auth.models import PermissionsMixin
 from django.utils.timezone import now
+
+
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
@@ -28,13 +30,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
-
+    @property
+    def is_guest(self):
+        return False
 
 
 
 
 class UserOpenAccount(models.Model):
     id = models.CharField(max_length=36, primary_key=True)  # UUID or unique string
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="open_accounts")
+
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
     device = models.CharField(max_length=255, null=True, blank=True)
@@ -42,7 +48,6 @@ class UserOpenAccount(models.Model):
     os = models.CharField(max_length=255, null=True, blank=True)
     first_seen_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
-   
     
     STATUS_CHOICES = [
         ('active', 'Active'),
@@ -54,10 +59,15 @@ class UserOpenAccount(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
 
     class Meta:
-        db_table = "tbl_user_open_account"  # Match existing database table
+        db_table = "tbl_user_open_account"
 
     def __str__(self):
         return f"{self.id} - {self.status}"
+    # In UserOpenAccount
+    @property
+    def is_guest(self):
+        return True
+
 
 
 

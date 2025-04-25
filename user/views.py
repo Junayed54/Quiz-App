@@ -5,16 +5,23 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import authenticate, get_user_model
 
 from .serializers import UserSerializer, UserRegistrationSerializer, UserLoginSerializer
-
+from quiz.models import *
+from .models import *
 User = get_user_model()
 
 class UserRegistrationView(generics.CreateAPIView):
-    """
-    API view for user registration.
-    """
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+
+    def get_client_ip(self, request):
+        """Extract IP address from the request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -22,13 +29,29 @@ class UserRegistrationView(generics.CreateAPIView):
             return Response(
                 {
                     "type": "error",
-                    "message": "user with this email already exists.",
+                    "message": "User with this email already exists.",
                     "data": {}
                 },
                 status=status.HTTP_200_OK,
             )
-        
+
         user = serializer.save()
+
+        # Get IP address
+        client_ip = self.get_client_ip(request)
+
+        # Get guest accounts with matching IP
+        guest_users = UserOpenAccount.objects.filter(ip_address=client_ip, user__isnull=True)
+
+        for guest_user in guest_users:
+            guest_user.user = user
+            guest_user.status = "active"
+            guest_user.save()
+
+            # Transfer data
+            QuizAttempt.objects.filter(guest_user=guest_user, user__isnull=True).update(user=user)
+            UserActivityLog.objects.filter(user=guest_user).update(user=guest_user)
+
         return Response(
             {
                 "type": "success",
