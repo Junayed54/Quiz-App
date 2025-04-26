@@ -439,12 +439,155 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.exceptions import AuthenticationFailed
+import jwt
+from jwt.exceptions import InvalidTokenError
+from django.conf import settings
+import datetime
 
+# class DashboardView(APIView):
+#     permission_classes = [AllowAny]
+#     authentication_classes = []  # remove default auth; we handle it manually
+
+#     def get(self, request, *args, **kwargs):
+#         user = None
+#         is_guest = False
+#         open_account_id = None
+#         access_token = None
+
+#         # Step 1: Extract token from header
+#         auth_header = request.headers.get("Authorization", "")
+#         if auth_header.startswith("Bearer "):
+#             token = auth_header.split(" ")[1]
+
+#             # Step 2: Try to decode it manually first (for guest tokens)
+#             try:
+#                 decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+#                 if decoded.get("is_guest"):
+#                     is_guest = True
+#                     open_account_id = decoded.get("open_account_id")
+#                     access_token = token
+#             except InvalidTokenError:
+#                 pass
+
+#             # Step 3: If not guest, try normal user auth
+#             if not is_guest:
+#                 try:
+#                     jwt_auth = JWTAuthentication()
+#                     auth_result = jwt_auth.authenticate(request)
+#                     if auth_result:
+#                         user, _ = auth_result
+#                         access_token = token
+#                 except AuthenticationFailed:
+#                     pass
+
+#         # Step 4: If still no access_token, create a new one
+#         if user and not access_token:
+#             refresh = RefreshToken.for_user(user)
+#             access_token = str(refresh.access_token)
+#         elif not user and not access_token:
+#             # Generate a guest token
+#             open_account_id = str(datetime.datetime.utcnow().timestamp())  # simple unique ID
+#             payload = {
+#                 "is_guest": True,
+#                 "open_account_id": open_account_id,
+#                 "exp": datetime.datetime.utcnow() + datetime.timedelta(days=7),
+#                 "iat": datetime.datetime.utcnow(),
+#             }
+#             access_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+#         # Your original quiz logic
+#         quizzes = Quiz.objects.all()
+#         quiz_data = []
+
+#         for quiz in quizzes:
+#             categories = Category.objects.filter(quiz=quiz)
+#             filtered_categories = []
+
+#             for category in categories:
+#                 if category.access_mode == "private" and not user:
+#                     continue
+
+#                 items = Item.objects.filter(category=category)
+#                 filtered_items = []
+
+#                 for item in items:
+#                     if item.access_mode == "private" and not user:
+#                         continue
+
+#                     quiz_attempt_data = None
+#                     if user:
+#                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
+#                         if quiz_attempt:
+#                             quiz_attempt_data = {
+#                                 "total_questions": quiz_attempt.total_questions,
+#                                 "correct_answers": quiz_attempt.correct_answers,
+#                                 "wrong_answers": quiz_attempt.wrong_answers,
+#                                 "score": quiz_attempt.score,
+#                             }
+
+#                     leaderboard_data = Leaderboard.objects.filter(item=item).order_by('-score')[:10]
+#                     leaderboard = [
+#                         {
+#                             "user": entry.user.username,
+#                             "score": entry.score,
+#                             "rank": entry.rank,
+#                         }
+#                         for entry in leaderboard_data
+#                     ]
+
+#                     filtered_items.append({
+#                         "item_id": str(item.id),
+#                         "item_title": item.title,
+#                         "item_subtitle": item.subtitle,
+#                         "item_button_label": item.button_label or "Play",
+#                         "access_mode": item.access_mode or "public",
+#                         "item_type": item.item_type or "default",
+#                         "quiz_attempt": quiz_attempt_data,
+#                         "leaderboard": leaderboard,
+#                     })
+
+#                 if filtered_items:
+#                     filtered_categories.append({
+#                         "category_id": str(category.id),
+#                         "category_title": category.title,
+#                         "category_type": category.category_type or "default",
+#                         "access_mode": category.access_mode,
+#                         "task_items": filtered_items,
+#                     })
+
+#             quiz_data.append({
+#                 "quiz_id": str(quiz.id),
+#                 "quiz_title": quiz.title,
+#                 "quiz_description": quiz.description,
+#                 "total_questions": quiz.total_questions,
+#                 "created_at": quiz.created_at,
+#                 "updated_at": quiz.updated_at,
+#                 "categories": filtered_categories,
+#             })
+
+#         return Response(
+#             {
+#                 "type": "success",
+#                 "message": "Dashboard fetched successfully",
+#                 "data": {
+#                     "quizzes": quiz_data,
+#                     "access_token": access_token,
+#                 },
+#             },
+#             status=status.HTTP_200_OK
+#         )
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 import jwt
 from jwt.exceptions import InvalidTokenError
-
 
 class DashboardView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -490,18 +633,22 @@ class DashboardView(APIView):
             filtered_categories = []
 
             for category in categories:
-                if category.access_mode == "private" and not user:
-                    continue
+                # For private category, user must be authenticated
+                if category.access_mode == "private":
+                    if not user or not getattr(user, "is_authenticated", False):
+                        continue
 
                 items = Item.objects.filter(category=category)
                 filtered_items = []
 
                 for item in items:
-                    if item.access_mode == "private" and not user:
-                        continue
+                    # For private item, user must be authenticated
+                    if item.access_mode == "private":
+                        if not user or not getattr(user, "is_authenticated", False):
+                            continue
 
                     quiz_attempt_data = None
-                    if user:
+                    if user and getattr(user, "is_authenticated", False):
                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
                         if quiz_attempt:
                             quiz_attempt_data = {
