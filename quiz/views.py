@@ -621,6 +621,9 @@ class DashboardView(APIView):
             auth_result = jwt_auth.authenticate(request)
             if auth_result:
                 user, _ = auth_result
+                
+                if auth_header.startswith("Bearer "):
+                    access_token = auth_header.split(" ")[1]
         except AuthenticationFailed:
             pass
 
@@ -632,6 +635,7 @@ class DashboardView(APIView):
                 if decoded.get("is_guest"):
                     open_account_id = decoded.get("open_account_id")
                     access_token = token  # re-use existing token
+                    # Important: Don't create a new token if valid guest token is found
             except jwt.ExpiredSignatureError:
                 message = "Guest token expired."
                 return Response({"type": "error", "message": message, "data": {}}, status=401)
@@ -643,7 +647,7 @@ class DashboardView(APIView):
         if not user and not access_token:
             client_ip = get_client_ip(request)
 
-        # Try to find an existing UserOpenAccount with same IP
+            # Try to find an existing UserOpenAccount with same IP
             open_account = UserOpenAccount.objects.filter(ip_address=client_ip, user__isnull=True).first()
 
             if open_account:
@@ -657,12 +661,13 @@ class DashboardView(APIView):
                     user_agent=request.META.get("HTTP_USER_AGENT", ""),
                 )
 
-        # Create guest token
-        guest_token = AccessToken()
-        guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])  # eg. 1 day
-        guest_token["is_guest"] = True
-        guest_token["open_account_id"] = open_account_id
-        access_token = str(guest_token)
+            # Now create the new guest token
+            guest_token = AccessToken()
+            guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])  # eg. 1 day
+            guest_token["is_guest"] = True
+            guest_token["open_account_id"] = open_account_id
+            access_token = str(guest_token)
+
 
 
         quizzes = Quiz.objects.all()
