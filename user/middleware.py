@@ -141,25 +141,28 @@ class CombinedJWTOrGuestAuthentication(BaseAuthentication):
     def authenticate(self, request):
         jwt_auth = JWTAuthentication()
 
-        # Try JWT Authentication
         try:
             user_auth = jwt_auth.authenticate(request)
             if user_auth is not None:
                 user, _ = user_auth
                 request.user = user
-                request.guest_user = None
                 return (user, None)
         except AuthenticationFailed:
             pass
 
-        # Try Guest Authentication
+        # Guest Authentication
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
-            guest_user = UserOpenAccount.objects.filter(id=token, status='active').first()
-            if guest_user:
-                request.user = None  # Set real user to None
-                request.guest_user = guest_user
-                return (guest_user, None)
+            try:
+                decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+                if decoded.get("is_guest") is True and decoded.get("open_account_id"):
+                    guest_id = decoded["open_account_id"]
+                    guest_user = UserOpenAccount.objects.filter(id=guest_id, status='active').first()
+                    if guest_user:
+                        request.user = guest_user
+                        return (guest_user, None)
+            except (jwt.ExpiredSignatureError, jwt.DecodeError, jwt.InvalidTokenError):
+                pass
 
         return None

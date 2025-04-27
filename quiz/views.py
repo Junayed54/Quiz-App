@@ -578,16 +578,29 @@ import datetime
 #             },
 #             status=status.HTTP_200_OK
 #         )
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
+from django.utils.timezone import now
 import jwt
-from jwt.exceptions import InvalidTokenError
+import uuid
+
+from .models import Quiz, Category, Item, QuizAttempt, Leaderboard
+from user.models import UserOpenAccount
+
+def get_client_ip(request):
+    """Get client IP address."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
 
 class DashboardView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -598,32 +611,59 @@ class DashboardView(APIView):
         response_type = "success"
         message = "Dashboard fetched successfully"
         access_token = None
-        open_account_id = None  # for guest ID tracking
+        open_account_id = None
 
-        # Step 1: Try normal JWT (registered user)
+        jwt_auth = JWTAuthentication()
+        auth_header = request.headers.get("Authorization", "")
+
+        # Step 1️⃣: Try authenticating as a real user
         try:
-            jwt_auth = JWTAuthentication()
             auth_result = jwt_auth.authenticate(request)
             if auth_result:
                 user, _ = auth_result
         except AuthenticationFailed:
             pass
 
-        # Step 2: If not authenticated, try to parse guest token manually
-        auth_header = request.headers.get("Authorization", "")
+        # Step 2️⃣: If no user, try decoding the token manually (maybe it's a guest token)
         if not user and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
-                decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+                decoded = jwt.decode(token, settings.SIMPLE_JWT['SIGNING_KEY'], algorithms=["HS256"])
                 if decoded.get("is_guest"):
                     open_account_id = decoded.get("open_account_id")
-                    access_token = token
-            except InvalidTokenError:
-                pass
-        elif user and auth_header.startswith("Bearer "):
-            access_token = auth_header.split(" ")[1]
-        else:
-            access_token = request.session.get("guest_id")
+                    access_token = token  # re-use existing token
+            except jwt.ExpiredSignatureError:
+                message = "Guest token expired."
+                return Response({"type": "error", "message": message, "data": {}}, status=401)
+            except jwt.InvalidTokenError:
+                message = "Invalid token."
+                return Response({"type": "error", "message": message, "data": {}}, status=401)
+
+        # Step 3️⃣: If still no user and no valid token ➔ Create new guest open_account and token
+        if not user and not access_token:
+            client_ip = get_client_ip(request)
+
+        # Try to find an existing UserOpenAccount with same IP
+            open_account = UserOpenAccount.objects.filter(ip_address=client_ip, user__isnull=True).first()
+
+            if open_account:
+                open_account_id = str(open_account.id)
+            else:
+                # Create new guest open_account
+                open_account_id = str(uuid.uuid4())
+                open_account = UserOpenAccount.objects.create(
+                    id=open_account_id,
+                    ip_address=client_ip,
+                    user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                )
+
+        # Create guest token
+        guest_token = AccessToken()
+        guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])  # eg. 1 day
+        guest_token["is_guest"] = True
+        guest_token["open_account_id"] = open_account_id
+        access_token = str(guest_token)
+
 
         quizzes = Quiz.objects.all()
         quiz_data = []
@@ -633,7 +673,6 @@ class DashboardView(APIView):
             filtered_categories = []
 
             for category in categories:
-                # For private category, user must be authenticated
                 if category.access_mode == "private":
                     if not user or not getattr(user, "is_authenticated", False):
                         continue
@@ -642,7 +681,6 @@ class DashboardView(APIView):
                 filtered_items = []
 
                 for item in items:
-                    # For private item, user must be authenticated
                     if item.access_mode == "private":
                         if not user or not getattr(user, "is_authenticated", False):
                             continue
@@ -709,6 +747,7 @@ class DashboardView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
 
 
         
@@ -1036,77 +1075,49 @@ class QuestionUploadView(APIView):
 
 class SubmitAnswersView(APIView):
     authentication_classes = [CombinedJWTOrGuestAuthentication]
-    permission_classes = [AllowAny]  # We'll check manually inside
+    permission_classes = [AllowAny]  # Manual check
 
     def post(self, request, *args, **kwargs):
         item_id = request.data.get("item_id")
         answers = request.data.get("answers", [])
         start_fresh = request.data.get("start_fresh", False)
 
-        # Try to get the item, category, and quiz
         try:
             item = Item.objects.get(id=item_id)
-            category = item.category
-            quiz = category.quiz
-        except (Item.DoesNotExist, Category.DoesNotExist, Quiz.DoesNotExist):
-            return Response(
-                {"type": "error", "message": "Invalid item or quiz.", "data": {}},
-                status=status.HTTP_200_OK
-            )
+            quiz = item.category.quiz
+        except Item.DoesNotExist:
+            return Response({"type": "error", "message": "Invalid item.", "data": {}}, status=200)
 
         negative_marking = quiz.negative_marking
 
-        # Determine user or guest_user using is_guest
-        if getattr(request.user, "is_guest", False):
-            guest_user = request.user
-            user = None
-        elif isinstance(request.user, User):
+        if not request.user:
+            return Response({"type": "error", "message": "Authentication required."}, status=200)
+
+        if isinstance(request.user, User):
             user = request.user
             guest_user = None
-        else:
+        elif isinstance(request.user, UserOpenAccount):
             user = None
-            guest_user = None
-
-        if not user and not guest_user:
-            return Response(
-                {"type": "error", "message": "Authentication credentials were not provided.", "data": {}},
-                status=status.HTTP_200_OK
-            )
-
-        # Create or resume QuizAttempt
-        if start_fresh:
-            quiz_attempt = QuizAttempt.objects.create(
-                user=user,
-                guest_user=guest_user,
-                item=item,
-                total_questions=item.questions.count(),
-                correct_answers=0,
-                wrong_answers=0,
-                score=0,
-            )
+            guest_user = request.user
         else:
-            filters = {"item": item}
-            if user:
-                filters["user"] = user
-            elif guest_user:
-                filters["guest_user"] = guest_user
+            return Response({"type": "error", "message": "Invalid user."}, status=200)
 
+        # Create or get QuizAttempt
+        filters = {"item": item}
+        if user:
+            filters["user"] = user
+        else:
+            filters["guest_user"] = guest_user
+
+        if start_fresh:
+            quiz_attempt = QuizAttempt.objects.create(user=user, guest_user=guest_user, item=item, total_questions=item.questions.count())
+        else:
             quiz_attempt = QuizAttempt.objects.filter(**filters).order_by("-attempt_date").first()
-            if not quiz_attempt or (
-                quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions
-            ):
-                quiz_attempt = QuizAttempt.objects.create(
-                    user=user,
-                    guest_user=guest_user,
-                    item=item,
-                    total_questions=item.questions.count(),
-                    correct_answers=0,
-                    wrong_answers=0,
-                    score=0,
-                )
+            if not quiz_attempt or (quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions):
+                quiz_attempt = QuizAttempt.objects.create(user=user, guest_user=guest_user, item=item, total_questions=item.questions.count())
 
+        # Process Answers
         result_data = []
-
         for answer in answers:
             question_id = answer.get("question_id")
             selected_option_ids = answer.get("selected_option_ids", [])
@@ -1114,11 +1125,9 @@ class SubmitAnswersView(APIView):
             try:
                 question = Question.objects.get(id=question_id)
             except Question.DoesNotExist:
-                continue  # Skip if question does not exist
+                continue
 
-            correct_options = set(
-                Option.objects.filter(question=question, is_correct=True).values_list("id", flat=True)
-            )
+            correct_options = set(Option.objects.filter(question=question, is_correct=True).values_list("id", flat=True))
             selected_set = set(selected_option_ids)
 
             is_correct = selected_set == correct_options
@@ -1139,20 +1148,15 @@ class SubmitAnswersView(APIView):
 
         quiz_attempt.save()
 
-        return Response(
-            {
-                "type": "success",
-                "message": "All answers submitted successfully.",
-                "data": {
-                    "results": result_data,
-                    "score": quiz_attempt.score,
-                    "correct_answers": quiz_attempt.correct_answers,
-                    "wrong_answers": quiz_attempt.wrong_answers,
-                    "total_questions": quiz_attempt.total_questions,
-                    "quiz_completed": (
-                        quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions
-                    ),
-                },
+        return Response({
+            "type": "success",
+            "message": "Answers submitted successfully.",
+            "data": {
+                "results": result_data,
+                "score": quiz_attempt.score,
+                "correct_answers": quiz_attempt.correct_answers,
+                "wrong_answers": quiz_attempt.wrong_answers,
+                "total_questions": quiz_attempt.total_questions,
+                "quiz_completed": (quiz_attempt.correct_answers + quiz_attempt.wrong_answers == quiz_attempt.total_questions),
             },
-            status=status.HTTP_200_OK
-        )
+        }, status=200)

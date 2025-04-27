@@ -160,7 +160,9 @@ REST_FRAMEWORK = {
     ],
     'EXCEPTION_HANDLER': 'quiz.utils.custom_exception_handler.custom_exception_handler',  # Your custom exception handler
 }
+from datetime import timedelta
 
+# Set the expiration time for the JWT token (1 day)
 
 
 SIMPLE_JWT = {
