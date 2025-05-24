@@ -913,7 +913,7 @@ class QuestionUploadView(APIView):
                             status=status.HTTP_200_OK
                         )
 
-                    question, _ = Question.objects.get_or_create(question_text=question_text)
+                    question= Question.objects.create(question_text=question_text)
                     item.questions.add(question)
 
                     # Extract options
@@ -924,11 +924,11 @@ class QuestionUploadView(APIView):
                         option_text = row_lower.get(option_col)
                         if pd.isna(option_text):
                             break
-                        options.append(option_text.strip())
+                        options.append(str(option_text).strip())
                         i += 1
 
                     # Normalize answers from mixed format
-                    raw_answers = [a.strip().lower() for a in answer_field.split(',') if a.strip()]
+                    raw_answers = [str(a).strip().lower() for a in answer_field.split(',') if str(a).strip()]
                     parsed_answers = []
                     for ans in raw_answers:
                         if ans.startswith('option') and ans[6:].isdigit():
@@ -946,6 +946,7 @@ class QuestionUploadView(APIView):
                             option_text=option_text.capitalize(),
                             defaults={'is_correct': is_correct}
                         )
+
 
             return Response(
                 {

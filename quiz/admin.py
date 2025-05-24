@@ -10,6 +10,8 @@ class OptionInline(admin.TabularInline):
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ('question_text',)
     inlines = [OptionInline]
+    search_fields = ['question_text'] 
+
 
 # Custom admin for Item model
 class ItemAdmin(admin.ModelAdmin):
