@@ -16,7 +16,7 @@ from .serializers import *
 from user.models import *
 import uuid
 
-
+from tournaments.models import *
 
 class QuizCreateAPIView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -602,6 +602,160 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
+# class DashboardView(APIView):
+#     authentication_classes = [JWTAuthentication]
+#     permission_classes = [AllowAny]
+
+#     def get(self, request, *args, **kwargs):
+#         user = None
+#         response_type = "success"
+#         message = "Dashboard fetched successfully"
+#         access_token = None
+#         open_account_id = None
+
+#         jwt_auth = JWTAuthentication()
+#         auth_header = request.headers.get("Authorization", "")
+
+#         # Step 1️⃣: Try authenticating as a real user
+#         try:
+#             auth_result = jwt_auth.authenticate(request)
+#             if auth_result:
+#                 user, _ = auth_result
+                
+#                 if auth_header.startswith("Bearer "):
+#                     access_token = auth_header.split(" ")[1]
+#         except AuthenticationFailed:
+#             pass
+
+#         # Step 2️⃣: If no user, try decoding the token manually (maybe it's a guest token)
+#         if not user and auth_header.startswith("Bearer "):
+#             token = auth_header.split(" ")[1]
+#             try:
+#                 decoded = jwt.decode(token, settings.SIMPLE_JWT['SIGNING_KEY'], algorithms=["HS256"])
+#                 if decoded.get("is_guest"):
+#                     open_account_id = decoded.get("open_account_id")
+#                     access_token = token  # re-use existing token
+#                     # Important: Don't create a new token if valid guest token is found
+#             except jwt.ExpiredSignatureError:
+#                 message = "Guest token expired."
+#                 return Response({"type": "error", "message": message, "data": {}}, status=401)
+#             except jwt.InvalidTokenError:
+#                 message = "Invalid token."
+#                 return Response({"type": "error", "message": message, "data": {}}, status=401)
+
+#         # Step 3️⃣: If still no user and no valid token ➔ Create new guest open_account and token
+#         if not user and not access_token:
+#             client_ip = get_client_ip(request)
+
+#             # Try to find an existing UserOpenAccount with same IP
+#             open_account = UserOpenAccount.objects.filter(ip_address=client_ip, user__isnull=True).first()
+
+#             if open_account:
+#                 open_account_id = str(open_account.id)
+#             else:
+#                 # Create new guest open_account
+#                 open_account_id = str(uuid.uuid4())
+#                 open_account = UserOpenAccount.objects.create(
+#                     id=open_account_id,
+#                     ip_address=client_ip,
+#                     user_agent=request.META.get("HTTP_USER_AGENT", ""),
+#                 )
+
+#             # Now create the new guest token
+#             guest_token = AccessToken()
+#             guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])  # eg. 1 day
+#             guest_token["is_guest"] = True
+#             guest_token["open_account_id"] = open_account_id
+#             access_token = str(guest_token)
+
+
+
+#         quizzes = Quiz.objects.all()
+#         quiz_data = []
+
+#         for quiz in quizzes:
+#             categories = Category.objects.filter(quiz=quiz)
+#             filtered_categories = []
+
+#             for category in categories:
+#                 if category.access_mode == "private":
+#                     if not user or not getattr(user, "is_authenticated", False):
+#                         continue
+
+#                 items = Item.objects.filter(category=category)
+#                 filtered_items = []
+
+#                 for item in items:
+#                     if item.access_mode == "private":
+#                         if not user or not getattr(user, "is_authenticated", False):
+#                             continue
+
+#                     quiz_attempt_data = None
+#                     if user and getattr(user, "is_authenticated", False):
+#                         quiz_attempt = QuizAttempt.objects.filter(user=user, item=item).first()
+#                         if quiz_attempt:
+#                             quiz_attempt_data = {
+#                                 "total_questions": quiz_attempt.total_questions,
+#                                 "correct_answers": quiz_attempt.correct_answers,
+#                                 "wrong_answers": quiz_attempt.wrong_answers,
+#                                 "score": quiz_attempt.score,
+#                             }
+
+#                     leaderboard_data = Leaderboard.objects.filter(item=item).order_by('-score')[:10]
+#                     leaderboard = [
+#                         {
+#                             "user": entry.user.username,
+#                             "score": entry.score,
+#                             "rank": entry.rank,
+#                         }
+#                         for entry in leaderboard_data
+#                     ]
+
+#                     filtered_items.append({
+#                         "item_id": str(item.id),
+#                         "item_title": item.title,
+#                         "item_subtitle": item.subtitle,
+#                         "item_button_label": item.button_label or "Play",
+#                         "access_mode": item.access_mode or "public",
+#                         "item_type": item.item_type or "default",
+#                         "quiz_attempt": quiz_attempt_data,
+#                         "leaderboard": leaderboard,
+#                     })
+
+#                 if filtered_items:
+#                     filtered_categories.append({
+#                         "category_id": str(category.id),
+#                         "category_title": category.title,
+#                         "category_type": category.category_type or "default",
+#                         "access_mode": category.access_mode,
+#                         "task_items": filtered_items,
+#                     })
+
+#             quiz_data.append({
+#                 "quiz_id": str(quiz.id),
+#                 "quiz_title": quiz.title,
+#                 "quiz_description": quiz.description,
+#                 "total_questions": quiz.total_questions,
+#                 "created_at": quiz.created_at,
+#                 "updated_at": quiz.updated_at,
+#                 "categories": filtered_categories,
+#             })
+
+#         return Response(
+#             {
+#                 "type": response_type,
+#                 "message": message,
+#                 "data": {
+#                     "quizzes": quiz_data,
+#                     "access_token": access_token,
+#                 },
+#             },
+#             status=status.HTTP_200_OK
+#         )
+
+
+
+
 class DashboardView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [AllowAny]
@@ -616,79 +770,65 @@ class DashboardView(APIView):
         jwt_auth = JWTAuthentication()
         auth_header = request.headers.get("Authorization", "")
 
-        # Step 1️⃣: Try authenticating as a real user
+        # Step 1: Authenticate user
         try:
             auth_result = jwt_auth.authenticate(request)
             if auth_result:
                 user, _ = auth_result
-                
                 if auth_header.startswith("Bearer "):
                     access_token = auth_header.split(" ")[1]
         except AuthenticationFailed:
             pass
 
-        # Step 2️⃣: If no user, try decoding the token manually (maybe it's a guest token)
+        # Step 2: Check guest token manually if no user
         if not user and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
                 decoded = jwt.decode(token, settings.SIMPLE_JWT['SIGNING_KEY'], algorithms=["HS256"])
                 if decoded.get("is_guest"):
                     open_account_id = decoded.get("open_account_id")
-                    access_token = token  # re-use existing token
-                    # Important: Don't create a new token if valid guest token is found
+                    access_token = token  # reuse existing token
             except jwt.ExpiredSignatureError:
                 message = "Guest token expired."
-                return Response({"type": "error", "message": message, "data": {}}, status=401)
+                return Response({"type": "error", "message": message, "data": {}}, status=200)
             except jwt.InvalidTokenError:
                 message = "Invalid token."
-                return Response({"type": "error", "message": message, "data": {}}, status=401)
+                return Response({"type": "error", "message": message, "data": {}}, status=200)
 
-        # Step 3️⃣: If still no user and no valid token ➔ Create new guest open_account and token
+        # Step 3: Create guest open_account and token if none
         if not user and not access_token:
             client_ip = get_client_ip(request)
-
-            # Try to find an existing UserOpenAccount with same IP
             open_account = UserOpenAccount.objects.filter(ip_address=client_ip, user__isnull=True).first()
-
             if open_account:
                 open_account_id = str(open_account.id)
             else:
-                # Create new guest open_account
                 open_account_id = str(uuid.uuid4())
                 open_account = UserOpenAccount.objects.create(
                     id=open_account_id,
                     ip_address=client_ip,
                     user_agent=request.META.get("HTTP_USER_AGENT", ""),
                 )
-
-            # Now create the new guest token
             guest_token = AccessToken()
-            guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])  # eg. 1 day
+            guest_token.set_exp(lifetime=settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'])
             guest_token["is_guest"] = True
             guest_token["open_account_id"] = open_account_id
             access_token = str(guest_token)
 
-
-
+        # Build quizzes data (your existing logic)
         quizzes = Quiz.objects.all()
         quiz_data = []
-
         for quiz in quizzes:
             categories = Category.objects.filter(quiz=quiz)
             filtered_categories = []
-
             for category in categories:
-                if category.access_mode == "private":
-                    if not user or not getattr(user, "is_authenticated", False):
-                        continue
+                if category.access_mode == "private" and (not user or not getattr(user, "is_authenticated", False)):
+                    continue
 
                 items = Item.objects.filter(category=category)
                 filtered_items = []
-
                 for item in items:
-                    if item.access_mode == "private":
-                        if not user or not getattr(user, "is_authenticated", False):
-                            continue
+                    if item.access_mode == "private" and (not user or not getattr(user, "is_authenticated", False)):
+                        continue
 
                     quiz_attempt_data = None
                     if user and getattr(user, "is_authenticated", False):
@@ -741,17 +881,40 @@ class DashboardView(APIView):
                 "categories": filtered_categories,
             })
 
+        # Add tournaments data here
+        # tournaments = Tournament.objects.filter(end_date__gte=timezone.now()).order_by('-start_date')
+        tournaments = Tournament.objects.all().order_by('-start_date')
+
+        tournaments_data = []
+        for tournament in tournaments:
+            tournaments_data.append({
+                "id": str(tournament.id),
+                "title": tournament.title,
+                "start_date": tournament.start_date,
+                "end_date": tournament.end_date,
+                "status": tournament.status
+                # Add any other fields you want to expose
+            })
+
         return Response(
             {
                 "type": response_type,
                 "message": message,
                 "data": {
                     "quizzes": quiz_data,
+                    "tournaments": tournaments_data,
                     "access_token": access_token,
                 },
             },
-            status=status.HTTP_200_OK
+            status=200,
         )
+
+
+
+
+
+
+
 
 
 

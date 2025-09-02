@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'user',
     'quiz',
+    'tournaments',
 ]
 
 MIDDLEWARE = [
@@ -146,6 +147,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
+# Media files (user uploads like images, banners, etc.)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / "media"
+
+
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
