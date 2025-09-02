@@ -7,24 +7,45 @@ from quiz.models import Question, Option # Assuming your quiz app models
 
 User = get_user_model()
 
+# class TournamentQuestionUploadSerializer(serializers.Serializer):
+#     """
+#     Serializer for validating the tournament ID and the uploaded Excel file.
+#     """
+#     tournament_id = serializers.PrimaryKeyRelatedField(
+#         queryset=Tournament.objects.all(),
+#         source='tournament', # Map to 'tournament' in validated_data
+#         help_text="ID of the tournament to which questions will be added."
+#     )
+#     excel_file = serializers.FileField(
+#         help_text="Excel file (.xlsx) containing questions and options."
+#     )
+
+#     def validate_excel_file(self, value):
+#         if not value.name.endswith('.xlsx'):
+#             raise serializers.ValidationError("Invalid file type. Only .xlsx Excel files are allowed.")
+#         return value
+
+
 class TournamentQuestionUploadSerializer(serializers.Serializer):
-    """
-    Serializer for validating the tournament ID and the uploaded Excel file.
-    """
     tournament_id = serializers.PrimaryKeyRelatedField(
-        queryset=Tournament.objects.all(),
-        source='tournament', # Map to 'tournament' in validated_data
+        queryset=Tournament.objects.none(),  # placeholder, no DB query at import
+        source='tournament',
         help_text="ID of the tournament to which questions will be added."
     )
     excel_file = serializers.FileField(
         help_text="Excel file (.xlsx) containing questions and options."
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set the queryset at runtime, after DB exists
+        self.fields['tournament_id'].queryset = Tournament.objects.all()
+
     def validate_excel_file(self, value):
         if not value.name.endswith('.xlsx'):
             raise serializers.ValidationError("Invalid file type. Only .xlsx Excel files are allowed.")
         return value
-    
+
     
     
 class TournamentPrizeSerializer(serializers.ModelSerializer):
