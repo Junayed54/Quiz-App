@@ -15,21 +15,21 @@ User = get_user_model()
 
 
 
-class TournamentManager(models.Manager):
-    def get_queryset(self):
-        # Override the default queryset to include a status update check
-        queryset = super().get_queryset()
+# class TournamentManager(models.Manager):
+#     def get_queryset(self):
+#         # Override the default queryset to include a status update check
+#         queryset = super().get_queryset()
         
-        # Get the current time
-        now = timezone.now()
+#         # Get the current time
+#         now = timezone.now()
 
-        # Update 'upcoming' tournaments to 'active'
-        queryset.filter(status='upcoming', start_date__lte=now).update(status='active')
+#         # Update 'upcoming' tournaments to 'active'
+#         queryset.filter(status='upcoming', start_date__lte=now).update(status='active')
         
-        # Update 'active' tournaments to 'finished'
-        queryset.filter(status='active', end_date__lte=now).update(status='finished')
+#         # Update 'active' tournaments to 'finished'
+#         queryset.filter(status='active', end_date__lte=now).update(status='finished')
         
-        return queryset
+#         return queryset
     
     
 class Tournament(models.Model):
@@ -124,7 +124,7 @@ class Tournament(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     # Use the custom manager
-    objects = TournamentManager()
+    # objects = TournamentManager()
 
     class Meta:
         verbose_name = "Tournament"
